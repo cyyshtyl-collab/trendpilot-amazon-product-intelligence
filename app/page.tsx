@@ -12,6 +12,8 @@ import {
   FileOutput,
   Filter,
   Gauge,
+  LockKeyhole,
+  LogOut,
   Plus,
   Search,
   Sparkles,
@@ -182,6 +184,8 @@ function verdictClass(verdict: Verdict): string {
 }
 
 export default function Home() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loginError, setLoginError] = useState('');
   const [selectedId, setSelectedId] = useState(1);
   const [filter, setFilter] = useState<'全部' | Verdict>('全部');
   const [query, setQuery] = useState('');
@@ -197,6 +201,10 @@ export default function Home() {
       ),
     [filter, query],
   );
+  useEffect(() => {
+    setIsAuthenticated(sessionStorage.getItem('trendpilot-authenticated') === 'true');
+  }, []);
+
   useEffect(() => {
     const context = (
       document as Document & {
@@ -275,6 +283,76 @@ export default function Home() {
     void register().catch(() => undefined);
     return () => lifecycle.abort();
   }, []);
+
+  /** Validates the local preview account and starts a browser session. */
+  function handleLogin(event: React.FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const values = new FormData(event.currentTarget);
+    const username = String(values.get('username') ?? '').trim();
+    const password = String(values.get('password') ?? '');
+    if (username !== 'admin' || password !== 'admin000000') {
+      setLoginError('账号或密码不正确');
+      return;
+    }
+    sessionStorage.setItem('trendpilot-authenticated', 'true');
+    setLoginError('');
+    setIsAuthenticated(true);
+  }
+
+  /** Ends the current local preview session. */
+  function handleLogout(): void {
+    sessionStorage.removeItem('trendpilot-authenticated');
+    setIsAuthenticated(false);
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <main className="login-page">
+        <section className="login-panel" aria-labelledby="login-title">
+          <div className="login-brand">
+            <div className="brand-mark">
+              <TrendingUp size={23} strokeWidth={2.5} />
+            </div>
+            <div>
+              <strong>TrendPilot</strong>
+              <span>亚马逊选品情报工作台</span>
+            </div>
+          </div>
+          <div className="login-copy">
+            <span className="login-kicker">PRIVATE WORKSPACE</span>
+            <h1 id="login-title">欢迎回来</h1>
+            <p>登录后进入本周选品机会雷达。</p>
+          </div>
+          <form className="login-form" onSubmit={handleLogin}>
+            <label htmlFor="username">账号</label>
+            <div className="login-input">
+              <span>AD</span>
+              <input id="username" name="username" autoComplete="username" required placeholder="请输入账号" />
+            </div>
+            <label htmlFor="password">密码</label>
+            <div className="login-input">
+              <LockKeyhole size={17} />
+              <input id="password" name="password" type="password" autoComplete="current-password" required placeholder="请输入密码" />
+            </div>
+            {loginError && <p className="login-error" role="alert">{loginError}</p>}
+            <button className="login-submit" type="submit">登录工作台 <ArrowUpRight size={16} /></button>
+          </form>
+          <p className="login-note">当前为内部演示认证，正式上线前将升级为服务端账号系统。</p>
+        </section>
+        <aside className="login-visual" aria-hidden="true">
+          <div className="login-orbit orbit-one" />
+          <div className="login-orbit orbit-two" />
+          <div className="login-radar">
+            <span>机会雷达</span>
+            <strong>22<small>/25</small></strong>
+            <i />
+          </div>
+          <div className="login-signal signal-one"><TrendingUp size={16} /><span>搜索趋势</span><strong>+36%</strong></div>
+          <div className="login-signal signal-two"><Sparkles size={16} /><span>高潜候选</span><strong>2</strong></div>
+        </aside>
+      </main>
+    );
+  }
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -348,6 +426,7 @@ export default function Home() {
               <Plus size={17} />
               新增候选
             </button>
+            <button className="logout-button" onClick={handleLogout} aria-label="退出登录"><LogOut size={17} /></button>
           </div>
         </header>
         <div className="content-grid">
