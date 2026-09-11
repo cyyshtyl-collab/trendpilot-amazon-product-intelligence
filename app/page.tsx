@@ -6,7 +6,6 @@ import {
   ArrowUpRight,
   BarChart3,
   Box,
-  ChevronDown,
   CircleDollarSign,
   Database,
   FileOutput,
@@ -15,9 +14,11 @@ import {
   LockKeyhole,
   LogOut,
   Plus,
+  Pencil,
   Search,
   Sparkles,
   TrendingUp,
+  Trash2,
   Workflow,
 } from 'lucide-react';
 import {
@@ -48,7 +49,7 @@ type Candidate = {
   sellingPoint: string;
 };
 
-const candidates: Candidate[] = [
+const DEFAULT_CANDIDATES: Candidate[] = [
   {
     id: 1,
     name: '磁吸旅行收纳袋',
@@ -187,9 +188,11 @@ export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [selectedId, setSelectedId] = useState(1);
+  const [candidates, setCandidates] = useState<Candidate[]>(DEFAULT_CANDIDATES);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [filter, setFilter] = useState<'全部' | Verdict>('全部');
   const [query, setQuery] = useState('');
-  const [showAdd, setShowAdd] = useState(false);
+  const [editorMode, setEditorMode] = useState<'new' | 'edit' | null>(null);
   const selected =
     candidates.find((item) => item.id === selectedId) ?? candidates[0];
   const filtered = useMemo(
@@ -202,8 +205,24 @@ export default function Home() {
     [filter, query],
   );
   useEffect(() => {
-    setIsAuthenticated(sessionStorage.getItem('trendpilot-authenticated') === 'true');
+    setIsAuthenticated(
+      sessionStorage.getItem('trendpilot-authenticated') === 'true',
+    );
+    try {
+      const stored = localStorage.getItem('trendpilot-candidates');
+      if (stored) {
+        const parsed = JSON.parse(stored) as Candidate[];
+        if (Array.isArray(parsed) && parsed.length > 0) setCandidates(parsed);
+      }
+    } finally {
+      setDataLoaded(true);
+    }
   }, []);
+
+  useEffect(() => {
+    if (dataLoaded)
+      localStorage.setItem('trendpilot-candidates', JSON.stringify(candidates));
+  }, [candidates, dataLoaded]);
 
   useEffect(() => {
     const context = (
@@ -282,7 +301,58 @@ export default function Home() {
     };
     void register().catch(() => undefined);
     return () => lifecycle.abort();
-  }, []);
+  }, [candidates]);
+
+  /** Creates or updates a candidate and persists the standard scoring contract. */
+  function handleSaveCandidate(event: React.FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const values = new FormData(event.currentTarget);
+    const boundedScore = (name: string) =>
+      Math.min(5, Math.max(1, Number(values.get(name)) || 1));
+    const scores: Candidate['scores'] = [
+      boundedScore('demand'),
+      boundedScore('competition'),
+      boundedScore('differentiation'),
+      boundedScore('supply'),
+      boundedScore('brand'),
+    ];
+    const total = scores.reduce((sum, value) => sum + value, 0);
+    const verdict: Verdict =
+      total >= 18 ? '通过' : total >= 15 ? '观察' : '淘汰';
+    const existing = editorMode === 'edit' ? selected : undefined;
+    const candidate: Candidate = {
+      id: existing?.id ?? Math.max(0, ...candidates.map((item) => item.id)) + 1,
+      name: String(values.get('name') ?? '').trim(),
+      category: String(values.get('category') ?? '').trim() || '未分类',
+      market: String(values.get('market') ?? '美国站'),
+      score: total,
+      verdict,
+      trend: Number(values.get('trend')) || 0,
+      revenue: String(values.get('revenue') ?? '').trim() || '$0',
+      reviews: existing?.reviews ?? 0,
+      margin: Number(values.get('margin')) || 0,
+      scores,
+      signals: existing?.signals ?? ['等待接入关键词与社媒趋势数据'],
+      pains: existing?.pains ?? ['等待评论摘要分析'],
+      sellingPoint: existing?.sellingPoint ?? '等待 AI 生成卖点文案',
+    };
+    if (!candidate.name) return;
+    setCandidates((current) =>
+      existing
+        ? current.map((item) => (item.id === existing.id ? candidate : item))
+        : [candidate, ...current],
+    );
+    setSelectedId(candidate.id);
+    setEditorMode(null);
+  }
+
+  /** Removes the selected candidate while preserving a non-empty workspace. */
+  function handleDeleteCandidate(): void {
+    if (candidates.length <= 1) return;
+    const remaining = candidates.filter((item) => item.id !== selected.id);
+    setCandidates(remaining);
+    setSelectedId(remaining[0].id);
+  }
 
   /** Validates the local preview account and starts a browser session. */
   function handleLogin(event: React.FormEvent<HTMLFormElement>): void {
@@ -327,28 +397,59 @@ export default function Home() {
             <label htmlFor="username">账号</label>
             <div className="login-input">
               <span>AD</span>
-              <input id="username" name="username" autoComplete="username" required placeholder="请输入账号" />
+              <input
+                id="username"
+                name="username"
+                autoComplete="username"
+                required
+                placeholder="请输入账号"
+              />
             </div>
             <label htmlFor="password">密码</label>
             <div className="login-input">
               <LockKeyhole size={17} />
-              <input id="password" name="password" type="password" autoComplete="current-password" required placeholder="请输入密码" />
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                placeholder="请输入密码"
+              />
             </div>
-            {loginError && <p className="login-error" role="alert">{loginError}</p>}
-            <button className="login-submit" type="submit">登录工作台 <ArrowUpRight size={16} /></button>
+            {loginError && (
+              <p className="login-error" role="alert">
+                {loginError}
+              </p>
+            )}
+            <button className="login-submit" type="submit">
+              登录工作台 <ArrowUpRight size={16} />
+            </button>
           </form>
-          <p className="login-note">当前为内部演示认证，正式上线前将升级为服务端账号系统。</p>
+          <p className="login-note">
+            当前为内部演示认证，正式上线前将升级为服务端账号系统。
+          </p>
         </section>
         <aside className="login-visual" aria-hidden="true">
           <div className="login-orbit orbit-one" />
           <div className="login-orbit orbit-two" />
           <div className="login-radar">
             <span>机会雷达</span>
-            <strong>22<small>/25</small></strong>
+            <strong>
+              22<small>/25</small>
+            </strong>
             <i />
           </div>
-          <div className="login-signal signal-one"><TrendingUp size={16} /><span>搜索趋势</span><strong>+36%</strong></div>
-          <div className="login-signal signal-two"><Sparkles size={16} /><span>高潜候选</span><strong>2</strong></div>
+          <div className="login-signal signal-one">
+            <TrendingUp size={16} />
+            <span>搜索趋势</span>
+            <strong>+36%</strong>
+          </div>
+          <div className="login-signal signal-two">
+            <Sparkles size={16} />
+            <span>高潜候选</span>
+            <strong>2</strong>
+          </div>
         </aside>
       </main>
     );
@@ -422,11 +523,20 @@ export default function Home() {
                 placeholder="搜索候选产品"
               />
             </label>
-            <button className="primary-button" onClick={() => setShowAdd(true)}>
+            <button
+              className="primary-button"
+              onClick={() => setEditorMode('new')}
+            >
               <Plus size={17} />
               新增候选
             </button>
-            <button className="logout-button" onClick={handleLogout} aria-label="退出登录"><LogOut size={17} /></button>
+            <button
+              className="logout-button"
+              onClick={handleLogout}
+              aria-label="退出登录"
+            >
+              <LogOut size={17} />
+            </button>
           </div>
         </header>
         <div className="content-grid">
@@ -660,9 +770,21 @@ export default function Home() {
                     {selected.category} · {selected.market}
                   </p>
                 </div>
-                <button aria-label="更多操作">
-                  <ChevronDown size={17} />
-                </button>
+                <div className="detail-actions">
+                  <button
+                    aria-label="编辑候选产品"
+                    onClick={() => setEditorMode('edit')}
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    aria-label="删除候选产品"
+                    onClick={handleDeleteCandidate}
+                    disabled={candidates.length <= 1}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               </div>
               <div className="total-score">
                 <div>
@@ -729,63 +851,133 @@ export default function Home() {
           </aside>
         </div>
       </section>
-      {showAdd && (
+      {editorMode && (
         <div className="modal-backdrop">
-          <dialog open className="modal" aria-labelledby="add-title">
+          <dialog
+            open
+            className="modal"
+            aria-labelledby="add-title"
+            key={`${editorMode}-${selected.id}`}
+          >
             <div className="modal-head">
               <div>
-                <span className="eyebrow">阶段 01 · 数据采集</span>
-                <h2 id="add-title">新增候选产品</h2>
+                <span className="eyebrow">候选产品数据</span>
+                <h2 id="add-title">
+                  {editorMode === 'edit' ? '编辑候选产品' : '新增候选产品'}
+                </h2>
               </div>
               <button
                 aria-label="关闭新增候选窗口"
-                onClick={() => setShowAdd(false)}
+                onClick={() => setEditorMode(null)}
               >
                 ×
               </button>
             </div>
-            <div className="form-grid">
-              <label>
-                产品名称
-                <input placeholder="例如：便携折叠水杯" />
-              </label>
-              <label>
-                目标站点
-                <select defaultValue="美国站">
-                  <option>美国站</option>
-                  <option>英国站</option>
-                  <option>德国站</option>
-                </select>
-              </label>
-              <label>
-                产品类目
-                <input placeholder="选择或输入类目" />
-              </label>
-              <label>
-                数据来源
-                <select defaultValue="手动录入">
-                  <option>手动录入</option>
-                  <option>卖家精灵 API</option>
-                  <option>Octoparse</option>
-                </select>
-              </label>
-            </div>
-            <div className="upgrade-note">
-              <Database size={18} />
-              <div>
-                <strong>首版使用手动录入</strong>
-                <p>后续连接采集工具后，Listing、评论和关键词趋势将自动回填。</p>
+            <form onSubmit={handleSaveCandidate}>
+              <div className="form-grid">
+                <label>
+                  产品名称
+                  <input
+                    name="name"
+                    required
+                    defaultValue={editorMode === 'edit' ? selected.name : ''}
+                    placeholder="例如：便携折叠水杯"
+                  />
+                </label>
+                <label>
+                  目标站点
+                  <select
+                    name="market"
+                    defaultValue={
+                      editorMode === 'edit' ? selected.market : '美国站'
+                    }
+                  >
+                    <option>美国站</option>
+                    <option>英国站</option>
+                    <option>德国站</option>
+                  </select>
+                </label>
+                <label>
+                  产品类目
+                  <input
+                    name="category"
+                    defaultValue={
+                      editorMode === 'edit' ? selected.category : ''
+                    }
+                    placeholder="选择或输入类目"
+                  />
+                </label>
+                <label>
+                  近 6 月趋势增幅 (%)
+                  <input
+                    name="trend"
+                    type="number"
+                    defaultValue={editorMode === 'edit' ? selected.trend : 0}
+                  />
+                </label>
+                <label>
+                  预估月销售额
+                  <input
+                    name="revenue"
+                    defaultValue={
+                      editorMode === 'edit' ? selected.revenue : '$0'
+                    }
+                    placeholder="$25K"
+                  />
+                </label>
+                <label>
+                  预估毛利率 (%)
+                  <input
+                    name="margin"
+                    type="number"
+                    min="0"
+                    max="100"
+                    defaultValue={editorMode === 'edit' ? selected.margin : 30}
+                  />
+                </label>
+                <fieldset className="score-editor">
+                  <legend>五维评分（每项 1–5 分）</legend>
+                  {scoreLabels.map((label, index) => (
+                    <label key={label}>
+                      {label}
+                      <input
+                        name={
+                          [
+                            'demand',
+                            'competition',
+                            'differentiation',
+                            'supply',
+                            'brand',
+                          ][index]
+                        }
+                        type="number"
+                        min="1"
+                        max="5"
+                        required
+                        defaultValue={
+                          editorMode === 'edit' ? selected.scores[index] : 3
+                        }
+                      />
+                    </label>
+                  ))}
+                </fieldset>
               </div>
-            </div>
-            <div className="modal-actions">
-              <button onClick={() => setShowAdd(false)}>取消</button>
-              <button
-                className="primary-button"
-                onClick={() => setShowAdd(false)}
-              >
-                创建并进入分析
-              </button>
-            </div>
+              <div className="upgrade-note">
+                <Database size={18} />
+                <div>
+                  <strong>数据会自动保存在当前浏览器</strong>
+                  <p>评分结论根据总分自动计算；接入飞书后将沿用相同字段。</p>
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button type="button" onClick={() => setEditorMode(null)}>
+                  取消
+                </button>
+                <button type="submit" className="primary-button">
+                  {editorMode === 'edit' ? '保存修改' : '创建并进入分析'}
+                </button>
+              </div>
+            </form>
           </dialog>
         </div>
       )}
