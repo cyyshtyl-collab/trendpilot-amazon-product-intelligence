@@ -517,6 +517,25 @@ button {
   font-size: 12px;
   font-weight: 700;
 }
+.import-button:disabled,
+.selling-point button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.analysis-toast {
+  margin: -8px 0 16px;
+  min-height: 38px;
+  padding: 9px 13px;
+  border: 1px solid #ccebdd;
+  border-radius: 10px;
+  background: #effaf5;
+  color: #277757;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
 .content-grid {
   display: grid;
   grid-template-columns: minmax(620px, 1fr) 330px;

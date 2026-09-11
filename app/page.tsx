@@ -211,6 +211,8 @@ export default function Home() {
   const [editorMode, setEditorMode] = useState<'new' | 'edit' | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [importMessage, setImportMessage] = useState('');
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisMessage, setAnalysisMessage] = useState('');
   const selected =
     candidates.find((item) => item.id === selectedId) ?? candidates[0];
   const categories = useMemo(
@@ -482,6 +484,30 @@ export default function Home() {
     }
   }
 
+  /** Runs explainable scoring for one candidate or the full candidate pool. */
+  async function handleAnalyze(ids?: number[]): Promise<void> {
+    setAnalysisLoading(true);
+    setAnalysisMessage('');
+    try {
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      const result = (await response.json()) as {
+        analyzed?: number;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(result.error ?? '预评分失败');
+      await loadCandidates();
+      setAnalysisMessage(`已完成 ${result.analyzed ?? 0} 个产品的智能预评分`);
+    } catch (error) {
+      setAnalysisMessage(error instanceof Error ? error.message : '预评分失败');
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }
+
   /** Loads the cloud candidate pool and creates initial records once when empty. */
   async function loadCandidates(): Promise<void> {
     const response = await fetch('/api/candidates');
@@ -685,6 +711,14 @@ export default function Home() {
             </label>
             <button
               className="import-button"
+              disabled={analysisLoading}
+              onClick={() => void handleAnalyze()}
+            >
+              <Sparkles size={17} />
+              {analysisLoading ? '评分中…' : '批量预评分'}
+            </button>
+            <button
+              className="import-button"
               onClick={() => {
                 setImportMessage('');
                 setShowImport(true);
@@ -709,6 +743,12 @@ export default function Home() {
             </button>
           </div>
         </header>
+        {analysisMessage && (
+          <div className="analysis-toast" role="status">
+            <Sparkles size={15} />
+            {analysisMessage}
+          </div>
+        )}
         <div className="content-grid">
           <section className="main-column">
             <div className="metrics-grid">
@@ -1052,10 +1092,14 @@ export default function Home() {
                 </div>
               </div>
               <div className="selling-point">
-                <span>SELLING POINT DRAFT</span>
+                <span>SELLING POINT · 智能预评分</span>
                 <p>{selected.sellingPoint}</p>
-                <button>
-                  生成完整文案 <ArrowUpRight size={14} />
+                <button
+                  disabled={analysisLoading}
+                  onClick={() => void handleAnalyze([selected.id])}
+                >
+                  {analysisLoading ? '分析中…' : '重新分析当前产品'}{' '}
+                  <ArrowUpRight size={14} />
                 </button>
               </div>
             </article>
