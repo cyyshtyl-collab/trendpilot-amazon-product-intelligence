@@ -38,6 +38,7 @@ type Verdict = '通过' | '观察' | '淘汰';
 type Candidate = {
   id: number;
   name: string;
+  asin?: string;
   category: string;
   market: string;
   score: number;
@@ -46,6 +47,11 @@ type Candidate = {
   revenue: string;
   reviews: number;
   margin: number;
+  price?: string;
+  bsr?: number;
+  rating?: number;
+  searchVolume?: number;
+  reviewGrowth?: number;
   scores: [number, number, number, number, number];
   signals: string[];
   pains: string[];
@@ -393,6 +399,10 @@ export default function Home() {
     const candidate: Candidate = {
       id: existing?.id ?? Math.max(0, ...candidates.map((item) => item.id)) + 1,
       name: String(values.get('name') ?? '').trim(),
+      asin:
+        String(values.get('asin') ?? '')
+          .trim()
+          .toUpperCase() || undefined,
       category: String(values.get('category') ?? '').trim() || '未分类',
       market: String(values.get('market') ?? '美国站'),
       score: total,
@@ -448,12 +458,18 @@ export default function Home() {
         headers.findIndex((header) => aliases.includes(header));
       const column = {
         name: find(['产品名称', 'name', 'product_name']),
+        asin: find(['asin', '产品asin', '产品标识']),
         category: find(['类目', 'category']),
         market: find(['站点', 'market']),
         trend: find(['趋势增幅', 'trend']),
         revenue: find(['月销售额', 'revenue']),
         reviews: find(['评论数', 'reviews']),
         margin: find(['毛利率', 'margin']),
+        price: find(['价格', 'price']),
+        bsr: find(['bsr', '大类排名', '排名']),
+        rating: find(['评分', 'rating']),
+        searchVolume: find(['关键词搜索量', '搜索量', 'search_volume']),
+        reviewGrowth: find(['评论增速', 'review_growth']),
         scores: [
           find(['需求真实性', 'demand']),
           find(['竞争可切入度', 'competition']),
@@ -473,12 +489,18 @@ export default function Home() {
         const score = scores.reduce((sum, value) => sum + value, 0);
         return {
           name: read(cells, column.name).trim(),
+          asin: read(cells, column.asin).trim().toUpperCase() || undefined,
           category: read(cells, column.category, '未分类') || '未分类',
           market: read(cells, column.market, '美国站') || '美国站',
           trend: Number(read(cells, column.trend)) || 0,
           revenue: read(cells, column.revenue, '$0') || '$0',
           reviews: Number(read(cells, column.reviews)) || 0,
           margin: Number(read(cells, column.margin)) || 0,
+          price: read(cells, column.price, '$0') || '$0',
+          bsr: Number(read(cells, column.bsr)) || 0,
+          rating: Number(read(cells, column.rating)) || 0,
+          searchVolume: Number(read(cells, column.searchVolume)) || 0,
+          reviewGrowth: Number(read(cells, column.reviewGrowth)) || 0,
           scores,
           score,
           verdict: score >= 18 ? '通过' : score >= 15 ? '观察' : '淘汰',
@@ -503,6 +525,22 @@ export default function Home() {
     } finally {
       event.target.value = '';
     }
+  }
+
+  /** Downloads the canonical CSV header and one example row. */
+  function downloadCsvTemplate(): void {
+    const template = [
+      'ASIN,产品名称,类目,站点,价格,BSR,评分,评论数,评论增速,关键词搜索量,趋势增幅,月销售额,毛利率,需求真实性,竞争可切入度,差异化空间,供应链可控性,双线协同性',
+      'B0EXAMPLE1,示例产品,旅行配件,美国站,$29.99,1250,4.4,386,12,18500,24,$38K,35,4,4,4,4,4',
+    ].join('\n');
+    const blob = new Blob([`\uFEFF${template}`], {
+      type: 'text/csv;charset=utf-8',
+    });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'TrendPilot-标准导入模板.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
   }
 
   /** Runs explainable scoring for one candidate or the full candidate pool. */
@@ -1022,6 +1060,7 @@ export default function Home() {
                               </button>
                               <small>
                                 {item.category} · {item.market}
+                                {item.asin ? ` · ${item.asin}` : ''}
                               </small>
                             </div>
                           </div>
@@ -1190,6 +1229,15 @@ export default function Home() {
                   />
                 </label>
                 <label>
+                  ASIN
+                  <input
+                    name="asin"
+                    maxLength={10}
+                    defaultValue={editorMode === 'edit' ? selected.asin : ''}
+                    placeholder="例如：B0XXXXXXXX"
+                  />
+                </label>
+                <label>
                   目标站点
                   <select
                     name="market"
@@ -1315,11 +1363,22 @@ export default function Home() {
                 onChange={handleCsvImport}
               />
             </label>
+            <button
+              type="button"
+              className="template-button"
+              onClick={downloadCsvTemplate}
+            >
+              <Download size={15} />
+              下载标准 CSV 模板
+            </button>
             <div className="field-guide">
               <strong>字段说明</strong>
-              <p>必填：产品名称（或 name / product_name）</p>
               <p>
-                选填：类目、站点、趋势增幅、月销售额、评论数、毛利率及五维评分；缺省评分按
+                建议必填：ASIN + 产品名称；同一站点的相同 ASIN
+                会更新原记录，不再重复创建。
+              </p>
+              <p>
+                支持：价格、BSR、评分、评论数、评论增速、关键词搜索量、趋势、销售额、毛利率及五维评分；缺省评分按
                 3 分处理。
               </p>
             </div>

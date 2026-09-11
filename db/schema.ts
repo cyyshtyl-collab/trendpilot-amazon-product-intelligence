@@ -1,10 +1,18 @@
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 export const candidates = sqliteTable(
   'candidates',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     name: text('name').notNull(),
+    asin: text('asin'),
     category: text('category').notNull(),
     market: text('market').notNull(),
     score: integer('score').notNull(),
@@ -13,6 +21,11 @@ export const candidates = sqliteTable(
     revenue: text('revenue').notNull().default('$0'),
     reviews: integer('reviews').notNull().default(0),
     margin: integer('margin').notNull().default(0),
+    price: text('price').notNull().default('$0'),
+    bsr: integer('bsr').notNull().default(0),
+    rating: real('rating').notNull().default(0),
+    searchVolume: integer('search_volume').notNull().default(0),
+    reviewGrowth: integer('review_growth').notNull().default(0),
     scoresJson: text('scores_json').notNull(),
     signalsJson: text('signals_json').notNull(),
     painsJson: text('pains_json').notNull(),
@@ -22,5 +35,6 @@ export const candidates = sqliteTable(
   (table) => [
     index('idx_candidates_score').on(table.score),
     index('idx_candidates_verdict').on(table.verdict),
+    uniqueIndex('idx_candidates_asin_market').on(table.asin, table.market),
   ],
 );
