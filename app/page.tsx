@@ -189,7 +189,6 @@ export default function Home() {
   const [loginError, setLoginError] = useState('');
   const [selectedId, setSelectedId] = useState(1);
   const [candidates, setCandidates] = useState<Candidate[]>(DEFAULT_CANDIDATES);
-  const [dataLoaded, setDataLoaded] = useState(false);
   const [filter, setFilter] = useState<'全部' | Verdict>('全部');
   const [query, setQuery] = useState('');
   const [editorMode, setEditorMode] = useState<'new' | 'edit' | null>(null);
@@ -205,24 +204,14 @@ export default function Home() {
     [filter, query],
   );
   useEffect(() => {
-    setIsAuthenticated(
-      sessionStorage.getItem('trendpilot-authenticated') === 'true',
-    );
-    try {
-      const stored = localStorage.getItem('trendpilot-candidates');
-      if (stored) {
-        const parsed = JSON.parse(stored) as Candidate[];
-        if (Array.isArray(parsed) && parsed.length > 0) setCandidates(parsed);
-      }
-    } finally {
-      setDataLoaded(true);
-    }
+    void fetch('/api/auth')
+      .then((response) => response.json())
+      .then((result: { authenticated?: boolean }) => {
+        setIsAuthenticated(result.authenticated === true);
+        if (result.authenticated) void loadCandidates();
+      })
+      .catch(() => setIsAuthenticated(false));
   }, []);
-
-  useEffect(() => {
-    if (dataLoaded)
-      localStorage.setItem('trendpilot-candidates', JSON.stringify(candidates));
-  }, [candidates, dataLoaded]);
 
   useEffect(() => {
     const context = (
@@ -304,7 +293,9 @@ export default function Home() {
   }, [candidates]);
 
   /** Creates or updates a candidate and persists the standard scoring contract. */
-  function handleSaveCandidate(event: React.FormEvent<HTMLFormElement>): void {
+  async function handleSaveCandidate(
+    event: React.FormEvent<HTMLFormElement>,
+  ): Promise<void> {
     event.preventDefault();
     const values = new FormData(event.currentTarget);
     const boundedScore = (name: string) =>
@@ -337,41 +328,79 @@ export default function Home() {
       sellingPoint: existing?.sellingPoint ?? '等待 AI 生成卖点文案',
     };
     if (!candidate.name) return;
-    setCandidates((current) =>
-      existing
-        ? current.map((item) => (item.id === existing.id ? candidate : item))
-        : [candidate, ...current],
-    );
-    setSelectedId(candidate.id);
+    const response = await fetch('/api/candidates', {
+      method: existing ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(candidate),
+    });
+    if (!response.ok) return;
+    await loadCandidates();
+    if (existing) setSelectedId(existing.id);
     setEditorMode(null);
   }
 
   /** Removes the selected candidate while preserving a non-empty workspace. */
-  function handleDeleteCandidate(): void {
+  async function handleDeleteCandidate(): Promise<void> {
     if (candidates.length <= 1) return;
+    const response = await fetch(`/api/candidates?id=${selected.id}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) return;
     const remaining = candidates.filter((item) => item.id !== selected.id);
     setCandidates(remaining);
     setSelectedId(remaining[0].id);
   }
 
+  /** Loads the cloud candidate pool and creates initial records once when empty. */
+  async function loadCandidates(): Promise<void> {
+    const response = await fetch('/api/candidates');
+    if (!response.ok) return;
+    const result = (await response.json()) as { candidates?: Candidate[] };
+    if (Array.isArray(result.candidates) && result.candidates.length > 0) {
+      setCandidates(result.candidates);
+      setSelectedId(result.candidates[0].id);
+      return;
+    }
+    for (const candidate of DEFAULT_CANDIDATES) {
+      await fetch('/api/candidates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(candidate),
+      });
+    }
+    const seeded = await fetch('/api/candidates');
+    if (seeded.ok) {
+      const data = (await seeded.json()) as { candidates: Candidate[] };
+      setCandidates(data.candidates);
+      setSelectedId(data.candidates[0]?.id ?? 1);
+    }
+  }
+
   /** Validates the local preview account and starts a browser session. */
-  function handleLogin(event: React.FormEvent<HTMLFormElement>): void {
+  async function handleLogin(
+    event: React.FormEvent<HTMLFormElement>,
+  ): Promise<void> {
     event.preventDefault();
     const values = new FormData(event.currentTarget);
     const username = String(values.get('username') ?? '').trim();
     const password = String(values.get('password') ?? '');
-    if (username !== 'admin' || password !== 'admin000000') {
+    const response = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!response.ok) {
       setLoginError('账号或密码不正确');
       return;
     }
-    sessionStorage.setItem('trendpilot-authenticated', 'true');
     setLoginError('');
     setIsAuthenticated(true);
+    await loadCandidates();
   }
 
   /** Ends the current local preview session. */
-  function handleLogout(): void {
-    sessionStorage.removeItem('trendpilot-authenticated');
+  async function handleLogout(): Promise<void> {
+    await fetch('/api/auth', { method: 'DELETE' });
     setIsAuthenticated(false);
   }
 
