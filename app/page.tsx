@@ -7,7 +7,9 @@ import {
   BarChart3,
   Box,
   CircleDollarSign,
+  Clipboard,
   Database,
+  Download,
   FileOutput,
   Filter,
   Gauge,
@@ -213,6 +215,8 @@ export default function Home() {
   const [importMessage, setImportMessage] = useState('');
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState('');
+  const [showReport, setShowReport] = useState(false);
+  const [reportMessage, setReportMessage] = useState('');
   const selected =
     candidates.find((item) => item.id === selectedId) ?? candidates[0];
   const categories = useMemo(
@@ -261,6 +265,23 @@ export default function Home() {
       trendData,
     };
   }, [candidates, selected]);
+  const reportCandidates = useMemo(
+    () =>
+      [...candidates]
+        .filter((item) => item.verdict !== '淘汰')
+        .sort((left, right) => right.score - left.score)
+        .slice(0, 8),
+    [candidates],
+  );
+  const reportMarkdown = useMemo(() => {
+    const rows = reportCandidates
+      .map(
+        (item, index) =>
+          `| ${index + 1} | ${item.name} | ${item.category} | ${item.score}/25 | ${item.trend}% | ${item.margin}% | ${item.verdict} |`,
+      )
+      .join('\n');
+    return `# TrendPilot 亚马逊选品周报\n\n生成时间：${new Date().toLocaleDateString('zh-CN')}\n\n## 决策摘要\n\n- 追踪产品：${analysis.tracked} 个\n- 高潜候选：${analysis.highPotential} 个\n- 平均趋势增幅：${analysis.averageTrend.toFixed(1)}%\n- 通过产品平均毛利率：${analysis.passedMargin.toFixed(1)}%\n\n## 候选清单\n\n| 排名 | 产品 | 类目 | 评分 | 趋势 | 毛利率 | 结论 |\n| --- | --- | --- | ---: | ---: | ---: | --- |\n${rows || '| - | 暂无通过或观察产品 | - | - | - | - | - |'}\n\n## 本周建议\n\n1. 优先验证评分最高产品的供应链报价和样品质量。\n2. 对趋势增幅超过 15% 的产品补充关键词与社媒数据。\n3. 对观察产品继续追踪一个采集周期，暂缓备货。\n\n> 说明：当前评分为可解释预评分，接入大模型后可追加评论语义与卖点论证。\n`;
+  }, [analysis, reportCandidates]);
   useEffect(() => {
     void fetch('/api/auth')
       .then((response) => response.json())
@@ -508,6 +529,25 @@ export default function Home() {
     }
   }
 
+  /** Downloads the current management report as a reusable Markdown document. */
+  function downloadReport(): void {
+    const blob = new Blob([reportMarkdown], {
+      type: 'text/markdown;charset=utf-8',
+    });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `TrendPilot-选品周报-${new Date().toISOString().slice(0, 10)}.md`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setReportMessage('周报已下载');
+  }
+
+  /** Copies the report for direct pasting into Feishu or WeCom. */
+  async function copyReport(): Promise<void> {
+    await navigator.clipboard.writeText(reportMarkdown);
+    setReportMessage('周报已复制，可直接粘贴到飞书或企业微信');
+  }
+
   /** Loads the cloud candidate pool and creates initial records once when empty. */
   async function loadCandidates(): Promise<void> {
     const response = await fetch('/api/candidates');
@@ -709,6 +749,16 @@ export default function Home() {
                 placeholder="搜索候选产品"
               />
             </label>
+            <button
+              className="report-button"
+              onClick={() => {
+                setReportMessage('');
+                setShowReport(true);
+              }}
+            >
+              <FileOutput size={17} />
+              生成周报
+            </button>
             <button
               className="import-button"
               disabled={analysisLoading}
@@ -1277,6 +1327,93 @@ export default function Home() {
             <div className="modal-actions">
               <button type="button" onClick={() => setShowImport(false)}>
                 完成
+              </button>
+            </div>
+          </dialog>
+        </div>
+      )}
+      {showReport && (
+        <div className="modal-backdrop">
+          <dialog
+            open
+            className="modal report-modal"
+            aria-labelledby="report-title"
+          >
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">决策产出 · 本周</span>
+                <h2 id="report-title">亚马逊选品决策周报</h2>
+              </div>
+              <button
+                aria-label="关闭周报"
+                onClick={() => setShowReport(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="report-kpis">
+              <div>
+                <span>追踪产品</span>
+                <strong>{analysis.tracked}</strong>
+              </div>
+              <div>
+                <span>高潜候选</span>
+                <strong>{analysis.highPotential}</strong>
+              </div>
+              <div>
+                <span>平均趋势</span>
+                <strong>{analysis.averageTrend.toFixed(1)}%</strong>
+              </div>
+              <div>
+                <span>通过毛利率</span>
+                <strong>{analysis.passedMargin.toFixed(1)}%</strong>
+              </div>
+            </div>
+            <div className="report-list">
+              <div className="report-list-head">
+                <strong>优先候选清单</strong>
+                <span>已按 AI 评分排序</span>
+              </div>
+              {reportCandidates.map((item, index) => (
+                <div className="report-row" key={item.id}>
+                  <b>{String(index + 1).padStart(2, '0')}</b>
+                  <div>
+                    <strong>{item.name}</strong>
+                    <span>
+                      {item.category} · {item.market}
+                    </span>
+                  </div>
+                  <em>{item.score}/25</em>
+                  <span className={verdictClass(item.verdict)}>
+                    {item.verdict}
+                  </span>
+                </div>
+              ))}
+              {reportCandidates.length === 0 && (
+                <p className="report-empty">暂无通过或观察产品</p>
+              )}
+            </div>
+            <div className="report-advice">
+              <strong>本周行动建议</strong>
+              <ol>
+                <li>优先验证最高分产品的供应链报价和样品质量。</li>
+                <li>为趋势增幅超过 15% 的产品补充关键词与社媒数据。</li>
+                <li>观察产品继续追踪一个采集周期，暂缓备货。</li>
+              </ol>
+            </div>
+            {reportMessage && <p className="import-message">{reportMessage}</p>}
+            <div className="modal-actions report-actions">
+              <button type="button" onClick={() => void copyReport()}>
+                <Clipboard size={15} />
+                复制周报
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={downloadReport}
+              >
+                <Download size={15} />
+                下载 Markdown
               </button>
             </div>
           </dialog>

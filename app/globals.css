@@ -517,6 +517,19 @@ button {
   font-size: 12px;
   font-weight: 700;
 }
+.report-button {
+  height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #292638;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+}
 .import-button:disabled,
 .selling-point button:disabled {
   opacity: 0.55;
@@ -1224,6 +1237,115 @@ tbody tr:hover,
   font-size: 11px;
   font-weight: 700;
 }
+.report-modal {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+.report-kpis {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+}
+.report-kpis > div {
+  padding: 13px;
+  border-radius: 11px;
+  background: #f5f4f8;
+}
+.report-kpis span,
+.report-kpis strong {
+  display: block;
+}
+.report-kpis span {
+  color: #85818d;
+  font-size: 11px;
+}
+.report-kpis strong {
+  margin-top: 5px;
+  color: #35313f;
+  font-size: 19px;
+}
+.report-list {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.report-list-head,
+.report-row {
+  display: grid;
+  align-items: center;
+}
+.report-list-head {
+  grid-template-columns: 1fr auto;
+  padding: 12px 14px;
+  background: #f7f6fa;
+}
+.report-list-head strong {
+  font-size: 12px;
+}
+.report-list-head span {
+  color: #8b8793;
+  font-size: 11px;
+}
+.report-row {
+  grid-template-columns: 34px 1fr 64px 58px;
+  gap: 9px;
+  padding: 11px 14px;
+  border-top: 1px solid var(--line);
+}
+.report-row > b {
+  color: #aaa6b2;
+  font-size: 11px;
+}
+.report-row > div strong,
+.report-row > div span {
+  display: block;
+}
+.report-row > div strong {
+  color: #403c49;
+  font-size: 12px;
+}
+.report-row > div span {
+  margin-top: 3px;
+  color: #8a8792;
+  font-size: 10px;
+}
+.report-row > em {
+  color: #635cdf;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+.report-empty {
+  padding: 24px;
+  color: #8a8792;
+  text-align: center;
+  font-size: 12px;
+}
+.report-advice {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #f4f2ff;
+}
+.report-advice strong {
+  color: #5550b9;
+  font-size: 12px;
+}
+.report-advice ol {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: #676274;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.report-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 @media (max-width: 1180px) {
   .content-grid {
     grid-template-columns: 1fr;
@@ -1317,6 +1439,9 @@ tbody tr:hover,
     grid-template-columns: 1fr;
   }
   .trend-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+  .report-kpis {
     grid-template-columns: 1fr 1fr;
   }
   .trend-summary > p {
