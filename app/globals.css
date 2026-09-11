@@ -660,6 +660,36 @@ button {
   height: 205px;
   margin-top: 10px;
 }
+.trend-summary {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 1.3fr 0.8fr 0.8fr 2.2fr;
+  gap: 10px;
+  align-items: stretch;
+}
+.trend-summary > div,
+.trend-summary > p {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #faf9fc;
+}
+.trend-summary span {
+  display: block;
+  color: #8a8792;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.trend-summary strong {
+  color: #3e3a49;
+  font-size: 13px;
+}
+.trend-summary > p {
+  color: #696573;
+  font-size: 12px;
+  line-height: 1.5;
+}
 .table-head {
   align-items: center;
 }
@@ -668,6 +698,15 @@ button {
   align-items: center;
   gap: 4px;
   color: #9996a2;
+}
+.filters select {
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: #625f6c;
+  padding: 0 8px;
+  font-size: 11px;
 }
 .filters button {
   border: 0;
@@ -1257,6 +1296,12 @@ tbody tr:hover,
   }
   .content-grid {
     grid-template-columns: 1fr;
+  }
+  .trend-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+  .trend-summary > p {
+    grid-column: 1/-1;
   }
   .metrics-grid {
     grid-template-columns: 1fr 1fr;

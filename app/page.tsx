@@ -136,14 +136,6 @@ const DEFAULT_CANDIDATES: Candidate[] = [
     sellingPoint: '—',
   },
 ];
-const trendData = [
-  { month: '4月', demand: 62, social: 45 },
-  { month: '5月', demand: 68, social: 52 },
-  { month: '6月', demand: 73, social: 58 },
-  { month: '7月', demand: 79, social: 71 },
-  { month: '8月', demand: 88, social: 77 },
-  { month: '9月', demand: 96, social: 84 },
-];
 const stages = [
   {
     number: '01',
@@ -213,21 +205,60 @@ export default function Home() {
   const [selectedId, setSelectedId] = useState(1);
   const [candidates, setCandidates] = useState<Candidate[]>(DEFAULT_CANDIDATES);
   const [filter, setFilter] = useState<'全部' | Verdict>('全部');
+  const [categoryFilter, setCategoryFilter] = useState('全部类目');
+  const [sortBy, setSortBy] = useState<'score' | 'trend' | 'margin'>('score');
   const [query, setQuery] = useState('');
   const [editorMode, setEditorMode] = useState<'new' | 'edit' | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [importMessage, setImportMessage] = useState('');
   const selected =
     candidates.find((item) => item.id === selectedId) ?? candidates[0];
-  const filtered = useMemo(
-    () =>
-      candidates.filter(
+  const categories = useMemo(
+    () => ['全部类目', ...new Set(candidates.map((item) => item.category))],
+    [candidates],
+  );
+  const filtered = useMemo(() => {
+    const sortValue = (item: Candidate) =>
+      sortBy === 'trend'
+        ? item.trend
+        : sortBy === 'margin'
+          ? item.margin
+          : item.score;
+    return candidates
+      .filter(
         (item) =>
           (filter === '全部' || item.verdict === filter) &&
+          (categoryFilter === '全部类目' || item.category === categoryFilter) &&
           item.name.toLowerCase().includes(query.trim().toLowerCase()),
-      ),
-    [filter, query],
-  );
+      )
+      .sort((left, right) => sortValue(right) - sortValue(left));
+  }, [candidates, categoryFilter, filter, query, sortBy]);
+  const analysis = useMemo(() => {
+    const average = (values: number[]) =>
+      values.length
+        ? values.reduce((sum, value) => sum + value, 0) / values.length
+        : 0;
+    const passed = candidates.filter((item) => item.verdict === '通过');
+    const baseline = Math.max(30, 76 - Math.max(-20, selected?.trend ?? 0));
+    const lift = (selected?.trend ?? 0) / 5;
+    const trendData = ['4月', '5月', '6月', '7月', '8月', '9月'].map(
+      (month, index) => ({
+        month,
+        demand: Math.round(baseline + lift * index),
+        social: Math.round(baseline * 0.72 + lift * (index + 0.5)),
+      }),
+    );
+    return {
+      highPotential: passed.length,
+      tracked: candidates.length,
+      categories: new Set(candidates.map((item) => item.category)).size,
+      averageTrend: average(candidates.map((item) => item.trend)),
+      passedMargin: average(passed.map((item) => item.margin)),
+      rising: candidates.filter((item) => item.trend >= 15).length,
+      cooling: candidates.filter((item) => item.trend < 0).length,
+      trendData,
+    };
+  }, [candidates, selected]);
   useEffect(() => {
     void fetch('/api/auth')
       .then((response) => response.json())
@@ -687,7 +718,7 @@ export default function Home() {
                 </div>
                 <div>
                   <span>高潜候选</span>
-                  <strong>2</strong>
+                  <strong>{analysis.highPotential}</strong>
                   <small>总分 ≥ 18</small>
                 </div>
                 <em>+1 本周</em>
@@ -698,8 +729,8 @@ export default function Home() {
                 </div>
                 <div>
                   <span>追踪产品</span>
-                  <strong>24</strong>
-                  <small>5 个重点类目</small>
+                  <strong>{analysis.tracked}</strong>
+                  <small>{analysis.categories} 个重点类目</small>
                 </div>
                 <em>+12.5%</em>
               </article>
@@ -709,7 +740,7 @@ export default function Home() {
                 </div>
                 <div>
                   <span>平均趋势增幅</span>
-                  <strong>18.4%</strong>
+                  <strong>{analysis.averageTrend.toFixed(1)}%</strong>
                   <small>近 6 个月</small>
                 </div>
                 <em>↑ 4.2%</em>
@@ -720,7 +751,7 @@ export default function Home() {
                 </div>
                 <div>
                   <span>目标毛利率</span>
-                  <strong>34.7%</strong>
+                  <strong>{analysis.passedMargin.toFixed(1)}%</strong>
                   <small>通过产品均值</small>
                 </div>
                 <em>达标</em>
@@ -746,7 +777,7 @@ export default function Home() {
               <div className="chart-wrap">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
-                    data={trendData}
+                    data={analysis.trendData}
                     margin={{ top: 10, right: 8, left: -24, bottom: 0 }}
                   >
                     <defs>
@@ -804,6 +835,27 @@ export default function Home() {
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
+              <div className="trend-summary">
+                <div>
+                  <span>当前观察</span>
+                  <strong>{selected.name}</strong>
+                </div>
+                <div>
+                  <span>快速升温</span>
+                  <strong>{analysis.rising} 个</strong>
+                </div>
+                <div>
+                  <span>趋势回落</span>
+                  <strong>{analysis.cooling} 个</strong>
+                </div>
+                <p>
+                  {selected.trend >= 15
+                    ? '搜索热度已进入加速区间，建议优先验证评论痛点与供应链。'
+                    : selected.trend < 0
+                      ? '热度正在回落，建议暂停投入并观察下一个采集周期。'
+                      : '需求保持平稳，可结合毛利率和竞争评分继续筛选。'}
+                </p>
+              </div>
             </article>
             <article className="panel candidates-panel">
               <div className="panel-head table-head">
@@ -813,6 +865,26 @@ export default function Home() {
                 </div>
                 <div className="filters">
                   <Filter size={15} />
+                  <select
+                    aria-label="按类目筛选"
+                    value={categoryFilter}
+                    onChange={(event) => setCategoryFilter(event.target.value)}
+                  >
+                    {categories.map((category) => (
+                      <option key={category}>{category}</option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="候选产品排序"
+                    value={sortBy}
+                    onChange={(event) =>
+                      setSortBy(event.target.value as typeof sortBy)
+                    }
+                  >
+                    <option value="score">按评分</option>
+                    <option value="trend">按趋势</option>
+                    <option value="margin">按毛利率</option>
+                  </select>
                   {(['全部', '通过', '观察', '淘汰'] as const).map((value) => (
                     <button
                       className={filter === value ? 'filter-active' : ''}
