@@ -19,6 +19,7 @@ import {
   Sparkles,
   TrendingUp,
   Trash2,
+  Upload,
   Workflow,
 } from 'lucide-react';
 import {
@@ -184,6 +185,28 @@ function verdictClass(verdict: Verdict): string {
   return 'status status-reject';
 }
 
+function parseCsvRow(row: string): string[] {
+  const cells: string[] = [];
+  let value = '';
+  let quoted = false;
+  for (let index = 0; index < row.length; index += 1) {
+    const character = row[index];
+    if (character === '"' && quoted && row[index + 1] === '"') {
+      value += '"';
+      index += 1;
+    } else if (character === '"') {
+      quoted = !quoted;
+    } else if (character === ',' && !quoted) {
+      cells.push(value.trim());
+      value = '';
+    } else {
+      value += character;
+    }
+  }
+  cells.push(value.trim());
+  return cells;
+}
+
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -192,6 +215,8 @@ export default function Home() {
   const [filter, setFilter] = useState<'全部' | Verdict>('全部');
   const [query, setQuery] = useState('');
   const [editorMode, setEditorMode] = useState<'new' | 'edit' | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importMessage, setImportMessage] = useState('');
   const selected =
     candidates.find((item) => item.id === selectedId) ?? candidates[0];
   const filtered = useMemo(
@@ -349,6 +374,81 @@ export default function Home() {
     const remaining = candidates.filter((item) => item.id !== selected.id);
     setCandidates(remaining);
     setSelectedId(remaining[0].id);
+  }
+
+  /** Parses a SellerSprite-style CSV and persists its normalized candidate rows. */
+  async function handleCsvImport(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ): Promise<void> {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImportMessage('正在读取并校验数据…');
+    try {
+      const lines = (await file.text())
+        .replace(/^\uFEFF/, '')
+        .split(/\r?\n/)
+        .filter((line) => line.trim());
+      if (lines.length < 2) throw new Error('CSV 中没有可导入的数据行');
+      const headers = parseCsvRow(lines[0]).map((value) => value.toLowerCase());
+      const find = (aliases: string[]) =>
+        headers.findIndex((header) => aliases.includes(header));
+      const column = {
+        name: find(['产品名称', 'name', 'product_name']),
+        category: find(['类目', 'category']),
+        market: find(['站点', 'market']),
+        trend: find(['趋势增幅', 'trend']),
+        revenue: find(['月销售额', 'revenue']),
+        reviews: find(['评论数', 'reviews']),
+        margin: find(['毛利率', 'margin']),
+        scores: [
+          find(['需求真实性', 'demand']),
+          find(['竞争可切入度', 'competition']),
+          find(['差异化空间', 'differentiation']),
+          find(['供应链可控性', 'supply']),
+          find(['双线协同性', 'brand']),
+        ],
+      };
+      if (column.name < 0) throw new Error('缺少“产品名称”列');
+      const read = (cells: string[], index: number, fallback = '') =>
+        index >= 0 ? (cells[index] ?? fallback) : fallback;
+      const imported = lines.slice(1, 201).map((line) => {
+        const cells = parseCsvRow(line);
+        const scores = column.scores.map((index) =>
+          Math.min(5, Math.max(1, Number(read(cells, index, '3')) || 3)),
+        ) as Candidate['scores'];
+        const score = scores.reduce((sum, value) => sum + value, 0);
+        return {
+          name: read(cells, column.name).trim(),
+          category: read(cells, column.category, '未分类') || '未分类',
+          market: read(cells, column.market, '美国站') || '美国站',
+          trend: Number(read(cells, column.trend)) || 0,
+          revenue: read(cells, column.revenue, '$0') || '$0',
+          reviews: Number(read(cells, column.reviews)) || 0,
+          margin: Number(read(cells, column.margin)) || 0,
+          scores,
+          score,
+          verdict: score >= 18 ? '通过' : score >= 15 ? '观察' : '淘汰',
+          signals: ['CSV 批量导入，等待趋势数据更新'],
+          pains: ['等待 AI 评论摘要分析'],
+          sellingPoint: '等待 AI 生成卖点文案',
+        } satisfies Omit<Candidate, 'id'>;
+      });
+      if (imported.some((item) => !item.name))
+        throw new Error('存在产品名称为空的数据行');
+      const response = await fetch('/api/candidates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(imported),
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? '导入失败');
+      await loadCandidates();
+      setImportMessage(`已成功导入 ${imported.length} 条候选产品`);
+    } catch (error) {
+      setImportMessage(error instanceof Error ? error.message : '导入失败');
+    } finally {
+      event.target.value = '';
+    }
   }
 
   /** Loads the cloud candidate pool and creates initial records once when empty. */
@@ -552,6 +652,16 @@ export default function Home() {
                 placeholder="搜索候选产品"
               />
             </label>
+            <button
+              className="import-button"
+              onClick={() => {
+                setImportMessage('');
+                setShowImport(true);
+              }}
+            >
+              <Upload size={17} />
+              批量导入
+            </button>
             <button
               className="primary-button"
               onClick={() => setEditorMode('new')}
@@ -1007,6 +1117,52 @@ export default function Home() {
                 </button>
               </div>
             </form>
+          </dialog>
+        </div>
+      )}
+      {showImport && (
+        <div className="modal-backdrop">
+          <dialog
+            open
+            className="modal import-modal"
+            aria-labelledby="import-title"
+          >
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">数据采集 · CSV</span>
+                <h2 id="import-title">批量导入候选产品</h2>
+              </div>
+              <button
+                aria-label="关闭导入窗口"
+                onClick={() => setShowImport(false)}
+              >
+                ×
+              </button>
+            </div>
+            <label className="upload-zone">
+              <Upload size={28} />
+              <strong>选择 CSV 文件</strong>
+              <span>支持卖家精灵、Octoparse 导出结果，每次最多 200 条</span>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={handleCsvImport}
+              />
+            </label>
+            <div className="field-guide">
+              <strong>字段说明</strong>
+              <p>必填：产品名称（或 name / product_name）</p>
+              <p>
+                选填：类目、站点、趋势增幅、月销售额、评论数、毛利率及五维评分；缺省评分按
+                3 分处理。
+              </p>
+            </div>
+            {importMessage && <p className="import-message">{importMessage}</p>}
+            <div className="modal-actions">
+              <button type="button" onClick={() => setShowImport(false)}>
+                完成
+              </button>
+            </div>
           </dialog>
         </div>
       )}

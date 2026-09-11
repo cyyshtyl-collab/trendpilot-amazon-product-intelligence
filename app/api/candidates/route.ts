@@ -32,6 +32,29 @@ function invalid(body: CandidatePayload): string | null {
   return null;
 }
 
+function insertStatement(body: CandidatePayload): D1PreparedStatement {
+  return db()
+    .prepare(
+      'INSERT INTO candidates (name,category,market,score,verdict,trend,revenue,reviews,margin,scores_json,signals_json,pains_json,selling_point,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    )
+    .bind(
+      body.name!.trim(),
+      body.category ?? '未分类',
+      body.market ?? '美国站',
+      body.score ?? 0,
+      body.verdict ?? '淘汰',
+      body.trend ?? 0,
+      body.revenue ?? '$0',
+      body.reviews ?? 0,
+      body.margin ?? 0,
+      JSON.stringify(body.scores),
+      JSON.stringify(body.signals ?? []),
+      JSON.stringify(body.pains ?? []),
+      body.sellingPoint ?? '',
+      new Date().toISOString(),
+    );
+}
+
 /** Lists all persisted candidates for the authenticated administrator. */
 export async function GET() {
   if (!(await authorized()))
@@ -58,35 +81,30 @@ export async function GET() {
   return Response.json({ candidates });
 }
 
-/** Creates a validated candidate record. */
+/** Creates one candidate or imports a validated batch of up to 200 candidates. */
 export async function POST(request: Request) {
   if (!(await authorized()))
     return Response.json({ error: '未登录' }, { status: 401 });
-  const body = (await request.json()) as CandidatePayload;
+  const body = (await request.json()) as CandidatePayload | CandidatePayload[];
+  if (Array.isArray(body)) {
+    if (body.length < 1 || body.length > 200)
+      return Response.json(
+        { error: '每次需导入 1–200 条产品数据' },
+        { status: 400 },
+      );
+    const issueIndex = body.findIndex((item) => invalid(item));
+    if (issueIndex >= 0)
+      return Response.json(
+        { error: `第 ${issueIndex + 1} 条数据：${invalid(body[issueIndex])}` },
+        { status: 400 },
+      );
+    await db().batch(body.map(insertStatement));
+    return Response.json({ imported: body.length }, { status: 201 });
+  }
   const issue = invalid(body);
   if (issue) return Response.json({ error: issue }, { status: 400 });
-  const result = await db()
-    .prepare(
-      'INSERT INTO candidates (name,category,market,score,verdict,trend,revenue,reviews,margin,scores_json,signals_json,pains_json,selling_point,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id',
-    )
-    .bind(
-      body.name!.trim(),
-      body.category ?? '未分类',
-      body.market ?? '美国站',
-      body.score ?? 0,
-      body.verdict ?? '淘汰',
-      body.trend ?? 0,
-      body.revenue ?? '$0',
-      body.reviews ?? 0,
-      body.margin ?? 0,
-      JSON.stringify(body.scores),
-      JSON.stringify(body.signals ?? []),
-      JSON.stringify(body.pains ?? []),
-      body.sellingPoint ?? '',
-      new Date().toISOString(),
-    )
-    .first<{ id: number }>();
-  return Response.json({ id: result?.id }, { status: 201 });
+  const result = await insertStatement(body).run();
+  return Response.json({ id: result.meta.last_row_id }, { status: 201 });
 }
 
 /** Updates a validated candidate record. */
