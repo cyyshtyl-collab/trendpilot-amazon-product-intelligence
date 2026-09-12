@@ -712,8 +712,13 @@ export default function Home() {
       verdict,
       trend: Number(values.get('trend')) || 0,
       revenue: String(values.get('revenue') ?? '').trim() || '$0',
-      reviews: existing?.reviews ?? 0,
+      reviews: Math.max(0, Number(values.get('reviews')) || 0),
       margin: Number(values.get('margin')) || 0,
+      price: String(values.get('price') ?? '').trim() || '$0',
+      bsr: Math.max(0, Number(values.get('bsr')) || 0),
+      rating: Math.min(5, Math.max(0, Number(values.get('rating')) || 0)),
+      searchVolume: Math.max(0, Number(values.get('searchVolume')) || 0),
+      reviewGrowth: Number(values.get('reviewGrowth')) || 0,
       scores,
       signals: existing?.signals ?? ['等待接入关键词与社媒趋势数据'],
       pains: existing?.pains ?? ['等待评论摘要分析'],
@@ -1611,6 +1616,12 @@ export default function Home() {
                   </div>
                   <div className="detail-actions">
                     <button
+                      className="enrich-action"
+                      onClick={() => setEditorMode('edit')}
+                    >
+                      补全商品数据
+                    </button>
+                    <button
                       aria-label="编辑候选产品"
                       onClick={() => setEditorMode('edit')}
                     >
@@ -2110,7 +2121,7 @@ export default function Home() {
               <div>
                 <span className="eyebrow">候选产品数据</span>
                 <h2 id="add-title">
-                  {editorMode === 'edit' ? '编辑候选产品' : '新增候选产品'}
+                  {editorMode === 'edit' ? '补全 Amazon 商品数据' : '新增候选产品'}
                 </h2>
               </div>
               <button
@@ -2182,6 +2193,60 @@ export default function Home() {
                   />
                 </label>
                 <label>
+                  当前售价
+                  <input
+                    name="price"
+                    defaultValue={editorMode === 'edit' ? selected.price : '$0'}
+                    placeholder="$29.99"
+                  />
+                </label>
+                <label>
+                  BSR 排名
+                  <input
+                    name="bsr"
+                    type="number"
+                    min="0"
+                    defaultValue={editorMode === 'edit' ? selected.bsr : 0}
+                  />
+                </label>
+                <label>
+                  Amazon 评分
+                  <input
+                    name="rating"
+                    type="number"
+                    min="0"
+                    max="5"
+                    step="0.1"
+                    defaultValue={editorMode === 'edit' ? selected.rating : 0}
+                  />
+                </label>
+                <label>
+                  评论数量
+                  <input
+                    name="reviews"
+                    type="number"
+                    min="0"
+                    defaultValue={editorMode === 'edit' ? selected.reviews : 0}
+                  />
+                </label>
+                <label>
+                  评论增速 (%)
+                  <input
+                    name="reviewGrowth"
+                    type="number"
+                    defaultValue={editorMode === 'edit' ? selected.reviewGrowth : 0}
+                  />
+                </label>
+                <label>
+                  关键词月搜索量
+                  <input
+                    name="searchVolume"
+                    type="number"
+                    min="0"
+                    defaultValue={editorMode === 'edit' ? selected.searchVolume : 0}
+                  />
+                </label>
+                <label>
                   预估毛利率 (%)
                   <input
                     name="margin"
@@ -2232,8 +2297,8 @@ export default function Home() {
               <div className="upgrade-note">
                 <Database size={18} />
                 <div>
-                  <strong>数据会自动保存在当前浏览器</strong>
-                  <p>评分结论根据总分自动计算；接入飞书后将沿用相同字段。</p>
+                  <strong>保存后自动生成当日数据快照</strong>
+                  <p>真实数据会进入趋势历史；随后可用 AI 重新评分并提炼差评痛点。</p>
                 </div>
               </div>
               <div className="modal-actions">
@@ -2241,7 +2306,7 @@ export default function Home() {
                   取消
                 </button>
                 <button type="submit" className="primary-button">
-                  {editorMode === 'edit' ? '保存修改' : '创建并进入分析'}
+                  {editorMode === 'edit' ? '保存商品数据' : '创建并进入分析'}
                 </button>
               </div>
             </form>

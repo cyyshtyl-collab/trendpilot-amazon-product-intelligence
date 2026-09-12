@@ -1551,6 +1551,15 @@ tbody tr:hover,
   display: flex;
   gap: 6px;
 }
+
+.detail-actions .enrich-action {
+  border-radius: 9px;
+  color: #5f52d6;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 7px 10px;
+  width: auto;
+}
 .detail-actions button {
   border: 1px solid var(--line);
   background: #fff;
