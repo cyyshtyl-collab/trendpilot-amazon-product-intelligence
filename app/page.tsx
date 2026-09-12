@@ -5,6 +5,7 @@ import {
   Activity,
   ArrowUpRight,
   BarChart3,
+  Bell,
   Box,
   CircleDollarSign,
   Clipboard,
@@ -87,6 +88,19 @@ type CandidateSnapshot = {
   trend: number;
   revenue: string;
   margin: number;
+};
+type MarketAlert = {
+  id: string;
+  candidateId: number;
+  product: string;
+  asin: string;
+  market: string;
+  level: 'high' | 'medium';
+  type: string;
+  summary: string;
+  detail: string;
+  action: string;
+  date: string;
 };
 
 const DEFAULT_CANDIDATES: Candidate[] = [
@@ -263,6 +277,13 @@ export default function Home() {
   const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>([]);
   const [historyPeriod, setHistoryPeriod] = useState<7 | 30 | 90>(30);
   const [snapshots, setSnapshots] = useState<CandidateSnapshot[]>([]);
+  const [showAlerts, setShowAlerts] = useState(false);
+  const [marketAlerts, setMarketAlerts] = useState<MarketAlert[]>([]);
+  const [alertSummary, setAlertSummary] = useState({
+    high: 0,
+    medium: 0,
+    comparedProducts: 0,
+  });
   const selected =
     candidates.find((item) => item.id === selectedId) ?? candidates[0];
   const categories = useMemo(
@@ -370,6 +391,20 @@ export default function Home() {
     if (!response.ok) return;
     const result = (await response.json()) as { runs?: AnalysisRun[] };
     setAnalysisRuns(result.runs ?? []);
+  }
+
+  /** Loads rule-based changes detected between each product's latest snapshots. */
+  async function loadAlerts(): Promise<void> {
+    const response = await fetch('/api/alerts');
+    if (!response.ok) return;
+    const result = (await response.json()) as {
+      alerts?: MarketAlert[];
+      summary?: { high: number; medium: number; comparedProducts: number };
+    };
+    setMarketAlerts(result.alerts ?? []);
+    setAlertSummary(
+      result.summary ?? { high: 0, medium: 0, comparedProducts: 0 },
+    );
   }
 
   /** Loads the selected product's recorded marketplace snapshots. */
@@ -893,6 +928,19 @@ export default function Home() {
                 placeholder="搜索候选产品"
               />
             </label>
+            <button
+              className="alert-button"
+              onClick={() => {
+                setShowAlerts(true);
+                void loadAlerts();
+              }}
+            >
+              <Bell size={17} />
+              预警中心
+              {marketAlerts.length > 0 && (
+                <span className="alert-badge">{marketAlerts.length}</span>
+              )}
+            </button>
             <button
               className="import-button"
               onClick={() => {
@@ -1691,6 +1739,88 @@ export default function Home() {
             </div>
             <div className="modal-actions">
               <button type="button" onClick={() => setShowRuns(false)}>
+                关闭
+              </button>
+            </div>
+          </dialog>
+        </div>
+      )}
+      {showAlerts && (
+        <div className="modal-backdrop">
+          <dialog
+            open
+            className="modal alerts-modal"
+            aria-labelledby="alerts-title"
+          >
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">最近两次数据快照 · 自动判断</span>
+                <h2 id="alerts-title">市场异动预警</h2>
+              </div>
+              <button
+                aria-label="关闭预警中心"
+                onClick={() => setShowAlerts(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="alert-kpis">
+              <div>
+                <strong>{alertSummary.high}</strong>
+                <span>高风险</span>
+              </div>
+              <div>
+                <strong>{alertSummary.medium}</strong>
+                <span>需关注</span>
+              </div>
+              <div>
+                <strong>{alertSummary.comparedProducts}</strong>
+                <span>已比较产品</span>
+              </div>
+            </div>
+            <div className="alerts-list">
+              {marketAlerts.map((alert) => (
+                <article
+                  className={`alert-row alert-${alert.level}`}
+                  key={alert.id}
+                >
+                  <div className="alert-row-head">
+                    <span className="alert-level">
+                      {alert.level === 'high' ? '高风险' : '需关注'}
+                    </span>
+                    <span className="alert-type">{alert.type}</span>
+                    <time>{alert.date}</time>
+                  </div>
+                  <button
+                    className="alert-product"
+                    onClick={() => {
+                      setSelectedId(alert.candidateId);
+                      setShowAlerts(false);
+                    }}
+                  >
+                    {alert.product} · {alert.market}
+                  </button>
+                  <strong>{alert.summary}</strong>
+                  <p>{alert.detail}</p>
+                  <div className="alert-action">
+                    <b>建议：</b>
+                    {alert.action}
+                  </div>
+                </article>
+              ))}
+              {marketAlerts.length === 0 && (
+                <div className="alert-empty">
+                  <Bell size={28} />
+                  <strong>暂未发现异动</strong>
+                  <p>
+                    同一 ASIN
+                    需要至少两个不同日期的数据快照；下次增量导入后会自动比较。
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button type="button" onClick={() => setShowAlerts(false)}>
                 关闭
               </button>
             </div>
