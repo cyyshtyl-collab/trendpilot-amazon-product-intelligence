@@ -1829,9 +1829,9 @@ export default function Home() {
                   </div>
                   <div className="source-quick-action">
                     <div>
-                      <strong>免费自动源</strong>
+                      <strong>免费自动源 · 每日 09:00</strong>
                       <span>
-                        Google Trends · 美国站 · 每次下载当天公开热搜快照
+                        Google Trends · 美国站 · 自动入库；也可立即抓取并下载
                       </span>
                     </div>
                     <button
@@ -1847,6 +1847,18 @@ export default function Home() {
                   {sourceMessage && (
                     <p className="source-action-message">{sourceMessage}</p>
                   )}
+                  <div className="field-guide">
+                    <strong>Amazon 真实数据接入</strong>
+                    <p>
+                      在 Octoparse 按 ASIN 采集标题、价格、BSR、评分、评论数和差评，导出 CSV 后点击右上角“导入采集数据”。
+                    </p>
+                    <p>
+                      ASIN 是必需的唯一身份；同一站点再次导入相同 ASIN 会更新商品并生成当天快照，不会重复创建。
+                    </p>
+                    <button type="button" className="template-button" onClick={downloadCsvTemplate}>
+                      <Download size={15} /> 下载 Octoparse 标准模板
+                    </button>
+                  </div>
                   <div className="source-runs">
                     <div className="source-runs-head">
                       <strong>最近采集</strong>
