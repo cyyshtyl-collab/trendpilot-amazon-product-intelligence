@@ -1001,6 +1001,12 @@ tbody tr:hover,
   gap: 7px;
   color: #635bda;
 }
+.evidence-count {
+  margin-left: auto;
+  color: #6b64d9;
+  font-size: 10px;
+  font-weight: 700;
+}
 .section-title h3 {
   margin: 0;
   color: var(--ink);
@@ -1125,6 +1131,21 @@ tbody tr:hover,
   color: #55525f;
   background: #fff;
   font-size: 12px;
+}
+.review-input {
+  grid-column: 1/-1;
+}
+.review-input textarea {
+  min-height: 96px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px 11px;
+  outline: none;
+  color: #55525f;
+  background: #fff;
+  font: inherit;
+  line-height: 1.5;
 }
 .score-editor {
   grid-column: 1/-1;

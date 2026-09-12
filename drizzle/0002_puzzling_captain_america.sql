@@ -1,0 +1,1 @@
+ALTER TABLE `candidates` ADD `review_text` text DEFAULT '' NOT NULL;

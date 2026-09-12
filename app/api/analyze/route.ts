@@ -8,6 +8,7 @@ type CandidateRow = {
   trend: number;
   reviews: number;
   margin: number;
+  review_text: string;
 };
 
 type Analysis = {
@@ -87,6 +88,22 @@ function analyze(candidate: CandidateRow): Analysis {
   ] as Analysis['scores'];
   const score = scores.reduce((sum, value) => sum + value, 0);
   const verdict = score >= 18 ? '通过' : score >= 15 ? '观察' : '淘汰';
+  const reviewSamples = candidate.review_text
+    .split(/\r?\n|\|\|/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const evidenceRules: Array<[RegExp, string]> = [
+    [/break|broke|broken|脱落|断裂|损坏/i, '结构耐用性不足'],
+    [/smell|odor|异味|气味/i, '材质或包装存在异味'],
+    [/clean|wash|清洗|难洗|污渍/i, '清洁维护不便'],
+    [/size|small|large|尺寸|太小|太大/i, '尺寸或适配描述不清'],
+    [/leak|漏水|渗漏/i, '密封性能不稳定'],
+    [/slip|滑动|吸盘|防滑/i, '固定或防滑能力不足'],
+  ];
+  const evidencePains = evidenceRules
+    .filter(([pattern]) => reviewSamples.some((review) => pattern.test(review)))
+    .map(([, pain]) => pain)
+    .slice(0, 3);
   const categoryPain = /宠物/.test(categoryText)
     ? ['耐咬与清洁便利性待验证', '不同体型适配可能产生退货']
     : /厨房|咖啡/.test(categoryText)
@@ -102,9 +119,14 @@ function analyze(candidate: CandidateRow): Analysis {
       `近周期趋势 ${candidate.trend >= 0 ? '增长' : '回落'} ${Math.abs(candidate.trend)}%`,
       `竞争样本累计 ${candidate.reviews} 条评论`,
       `预估毛利率 ${candidate.margin}%`,
+      reviewSamples.length
+        ? `已读取 ${reviewSamples.length} 条差评证据`
+        : '尚未导入差评原文',
     ],
-    pains: categoryPain,
-    sellingPoint: `Designed around the details buyers expect from ${candidate.name}.`,
+    pains: evidencePains.length ? evidencePains : categoryPain,
+    sellingPoint: evidencePains.length
+      ? `Built to address the everyday details buyers notice most in ${candidate.name}.`
+      : `Designed around the details buyers expect from ${candidate.name}.`,
   };
 }
 
@@ -121,11 +143,11 @@ export async function POST(request: Request) {
   const query = ids.length
     ? db()
         .prepare(
-          `SELECT id,name,category,trend,reviews,margin FROM candidates WHERE id IN (${ids.map(() => '?').join(',')})`,
+          `SELECT id,name,category,trend,reviews,margin,review_text FROM candidates WHERE id IN (${ids.map(() => '?').join(',')})`,
         )
         .bind(...ids)
     : db().prepare(
-        'SELECT id,name,category,trend,reviews,margin FROM candidates LIMIT 200',
+        'SELECT id,name,category,trend,reviews,margin,review_text FROM candidates LIMIT 200',
       );
   const result = await query.all<CandidateRow>();
   if (!result.results.length)

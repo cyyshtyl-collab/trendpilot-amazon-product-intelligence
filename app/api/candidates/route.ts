@@ -18,6 +18,7 @@ type CandidatePayload = {
   rating?: number;
   searchVolume?: number;
   reviewGrowth?: number;
+  reviewText?: string;
   scores?: number[];
   signals?: string[];
   pains?: string[];
@@ -43,7 +44,7 @@ function invalid(body: CandidatePayload): string | null {
 function insertStatement(body: CandidatePayload): D1PreparedStatement {
   const asin = body.asin?.trim().toUpperCase() || null;
   const columns =
-    'name,asin,category,market,score,verdict,trend,revenue,reviews,margin,price,bsr,rating,search_volume,review_growth,scores_json,signals_json,pains_json,selling_point,updated_at';
+    'name,asin,category,market,score,verdict,trend,revenue,reviews,margin,price,bsr,rating,search_volume,review_growth,review_text,scores_json,signals_json,pains_json,selling_point,updated_at';
   const values = [
     body.name!.trim(),
     asin,
@@ -60,6 +61,7 @@ function insertStatement(body: CandidatePayload): D1PreparedStatement {
     body.rating ?? 0,
     body.searchVolume ?? 0,
     body.reviewGrowth ?? 0,
+    body.reviewText?.slice(0, 20000) ?? '',
     JSON.stringify(body.scores),
     JSON.stringify(body.signals ?? []),
     JSON.stringify(body.pains ?? []),
@@ -69,7 +71,7 @@ function insertStatement(body: CandidatePayload): D1PreparedStatement {
   if (asin) {
     return db()
       .prepare(
-        `INSERT INTO candidates (${columns}) VALUES (${values.map(() => '?').join(',')}) ON CONFLICT(asin,market) DO UPDATE SET name=excluded.name,category=excluded.category,score=excluded.score,verdict=excluded.verdict,trend=excluded.trend,revenue=excluded.revenue,reviews=excluded.reviews,margin=excluded.margin,price=excluded.price,bsr=excluded.bsr,rating=excluded.rating,search_volume=excluded.search_volume,review_growth=excluded.review_growth,scores_json=excluded.scores_json,signals_json=excluded.signals_json,pains_json=excluded.pains_json,selling_point=excluded.selling_point,updated_at=excluded.updated_at`,
+        `INSERT INTO candidates (${columns}) VALUES (${values.map(() => '?').join(',')}) ON CONFLICT(asin,market) DO UPDATE SET name=excluded.name,category=excluded.category,score=excluded.score,verdict=excluded.verdict,trend=excluded.trend,revenue=excluded.revenue,reviews=excluded.reviews,margin=excluded.margin,price=excluded.price,bsr=excluded.bsr,rating=excluded.rating,search_volume=excluded.search_volume,review_growth=excluded.review_growth,review_text=excluded.review_text,scores_json=excluded.scores_json,signals_json=excluded.signals_json,pains_json=excluded.pains_json,selling_point=excluded.selling_point,updated_at=excluded.updated_at`,
       )
       .bind(...values);
   }
@@ -104,6 +106,7 @@ export async function GET() {
     rating: row.rating,
     searchVolume: row.search_volume,
     reviewGrowth: row.review_growth,
+    reviewText: row.review_text,
     scores: JSON.parse(String(row.scores_json)),
     signals: JSON.parse(String(row.signals_json)),
     pains: JSON.parse(String(row.pains_json)),
@@ -148,7 +151,7 @@ export async function PUT(request: Request) {
     return Response.json({ error: issue ?? '缺少产品编号' }, { status: 400 });
   await db()
     .prepare(
-      'UPDATE candidates SET name=?,asin=?,category=?,market=?,score=?,verdict=?,trend=?,revenue=?,reviews=?,margin=?,price=?,bsr=?,rating=?,search_volume=?,review_growth=?,scores_json=?,signals_json=?,pains_json=?,selling_point=?,updated_at=? WHERE id=?',
+      'UPDATE candidates SET name=?,asin=?,category=?,market=?,score=?,verdict=?,trend=?,revenue=?,reviews=?,margin=?,price=?,bsr=?,rating=?,search_volume=?,review_growth=?,review_text=?,scores_json=?,signals_json=?,pains_json=?,selling_point=?,updated_at=? WHERE id=?',
     )
     .bind(
       body.name!.trim(),
@@ -166,6 +169,7 @@ export async function PUT(request: Request) {
       body.rating ?? 0,
       body.searchVolume ?? 0,
       body.reviewGrowth ?? 0,
+      body.reviewText?.slice(0, 20000) ?? '',
       JSON.stringify(body.scores),
       JSON.stringify(body.signals ?? []),
       JSON.stringify(body.pains ?? []),

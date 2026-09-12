@@ -52,6 +52,7 @@ type Candidate = {
   rating?: number;
   searchVolume?: number;
   reviewGrowth?: number;
+  reviewText?: string;
   scores: [number, number, number, number, number];
   signals: string[];
   pains: string[];
@@ -415,6 +416,7 @@ export default function Home() {
       signals: existing?.signals ?? ['等待接入关键词与社媒趋势数据'],
       pains: existing?.pains ?? ['等待评论摘要分析'],
       sellingPoint: existing?.sellingPoint ?? '等待 AI 生成卖点文案',
+      reviewText: String(values.get('reviewText') ?? '').trim(),
     };
     if (!candidate.name) return;
     const response = await fetch('/api/candidates', {
@@ -470,6 +472,12 @@ export default function Home() {
         rating: find(['评分', 'rating']),
         searchVolume: find(['关键词搜索量', '搜索量', 'search_volume']),
         reviewGrowth: find(['评论增速', 'review_growth']),
+        reviewText: find([
+          '差评内容',
+          '评论文本',
+          'review_text',
+          'reviews_text',
+        ]),
         scores: [
           find(['需求真实性', 'demand']),
           find(['竞争可切入度', 'competition']),
@@ -501,6 +509,7 @@ export default function Home() {
           rating: Number(read(cells, column.rating)) || 0,
           searchVolume: Number(read(cells, column.searchVolume)) || 0,
           reviewGrowth: Number(read(cells, column.reviewGrowth)) || 0,
+          reviewText: read(cells, column.reviewText).slice(0, 20000),
           scores,
           score,
           verdict: score >= 18 ? '通过' : score >= 15 ? '观察' : '淘汰',
@@ -530,8 +539,8 @@ export default function Home() {
   /** Downloads the canonical CSV header and one example row. */
   function downloadCsvTemplate(): void {
     const template = [
-      'ASIN,产品名称,类目,站点,价格,BSR,评分,评论数,评论增速,关键词搜索量,趋势增幅,月销售额,毛利率,需求真实性,竞争可切入度,差异化空间,供应链可控性,双线协同性',
-      'B0EXAMPLE1,示例产品,旅行配件,美国站,$29.99,1250,4.4,386,12,18500,24,$38K,35,4,4,4,4,4',
+      'ASIN,产品名称,类目,站点,价格,BSR,评分,评论数,评论增速,关键词搜索量,趋势增幅,月销售额,毛利率,差评内容,需求真实性,竞争可切入度,差异化空间,供应链可控性,双线协同性',
+      'B0EXAMPLE1,示例产品,旅行配件,美国站,$29.99,1250,4.4,386,12,18500,24,$38K,35,"The zipper broke after one trip || Hard to clean",4,4,4,4,4',
     ].join('\n');
     const blob = new Blob([`\uFEFF${template}`], {
       type: 'text/csv;charset=utf-8',
@@ -1173,6 +1182,11 @@ export default function Home() {
                 <div className="section-title">
                   <Activity size={16} />
                   <h3>未解决痛点</h3>
+                  <span className="evidence-count">
+                    {selected.reviewText
+                      ? `${selected.reviewText.split(/\r?\n|\|\|/).filter((item) => item.trim()).length} 条评论证据`
+                      : '待补充评论证据'}
+                  </span>
                 </div>
                 <div className="pain-tags">
                   {selected.pains.map((item) => (
@@ -1314,6 +1328,17 @@ export default function Home() {
                     </label>
                   ))}
                 </fieldset>
+                <label className="review-input">
+                  差评原文（每行一条，也可用 || 分隔）
+                  <textarea
+                    name="reviewText"
+                    maxLength={20000}
+                    defaultValue={
+                      editorMode === 'edit' ? selected.reviewText : ''
+                    }
+                    placeholder="粘贴 Amazon 差评原文，用于提炼可复核痛点"
+                  />
+                </label>
               </div>
               <div className="upgrade-note">
                 <Database size={18} />
@@ -1378,7 +1403,7 @@ export default function Home() {
                 会更新原记录，不再重复创建。
               </p>
               <p>
-                支持：价格、BSR、评分、评论数、评论增速、关键词搜索量、趋势、销售额、毛利率及五维评分；缺省评分按
+                支持：价格、BSR、评分、评论数、评论增速、关键词搜索量、差评内容、趋势、销售额、毛利率及五维评分；缺省评分按
                 3 分处理。
               </p>
             </div>

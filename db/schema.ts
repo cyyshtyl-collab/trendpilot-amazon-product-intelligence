@@ -26,6 +26,7 @@ export const candidates = sqliteTable(
     rating: real('rating').notNull().default(0),
     searchVolume: integer('search_volume').notNull().default(0),
     reviewGrowth: integer('review_growth').notNull().default(0),
+    reviewText: text('review_text').notNull().default(''),
     scoresJson: text('scores_json').notNull(),
     signalsJson: text('signals_json').notNull(),
     painsJson: text('pains_json').notNull(),
