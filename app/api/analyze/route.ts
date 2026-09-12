@@ -344,6 +344,7 @@ function analyze(candidate: CandidateRow): Analysis {
 export async function POST(request: Request) {
   if (!(await authorized()))
     return Response.json({ error: '未登录' }, { status: 401 });
+  const startedAt = Date.now();
   const body = (await request.json()) as { ids?: number[] };
   const ids = Array.isArray(body.ids)
     ? [
@@ -365,6 +366,7 @@ export async function POST(request: Request) {
   const config = runtimeConfig();
   const configured = Boolean(config.apiKey && config.model);
   let fallbackCount = 0;
+  const errors: string[] = [];
   const outputs = await Promise.all(
     result.results.map(async (candidate, index) => {
       if (!configured || index >= 20) {
@@ -375,8 +377,9 @@ export async function POST(request: Request) {
         return config.provider === 'siliconflow'
           ? await analyzeWithSiliconFlow(candidate)
           : await analyzeWithOpenAI(candidate);
-      } catch {
+      } catch (error) {
         fallbackCount += 1;
+        errors.push(error instanceof Error ? error.message : '未知模型错误');
         return analyze(candidate);
       }
     }),
@@ -399,6 +402,32 @@ export async function POST(request: Request) {
       );
   });
   await db().batch(statements);
+  const modelSucceeded = configured
+    ? Math.max(0, Math.min(result.results.length, 20) - fallbackCount)
+    : 0;
+  const status = !configured
+    ? 'not_configured'
+    : modelSucceeded === 0
+      ? 'failed'
+      : fallbackCount > 0
+        ? 'partial'
+        : 'succeeded';
+  await db()
+    .prepare(
+      'INSERT INTO analysis_runs (provider,model,requested,succeeded,fallback,duration_ms,status,error_message,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
+    )
+    .bind(
+      config.provider,
+      config.model ?? '未配置',
+      result.results.length,
+      modelSucceeded,
+      fallbackCount,
+      Date.now() - startedAt,
+      status,
+      [...new Set(errors)].join('；').slice(0, 500),
+      new Date().toISOString(),
+    )
+    .run();
   return Response.json({
     analyzed: statements.length,
     mode:
@@ -406,5 +435,7 @@ export async function POST(request: Request) {
         ? config.provider
         : 'explainable-pre-score',
     fallbackCount,
+    durationMs: Date.now() - startedAt,
+    status,
   });
 }

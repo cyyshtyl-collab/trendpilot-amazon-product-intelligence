@@ -13,6 +13,7 @@ import {
   FileOutput,
   Filter,
   Gauge,
+  History,
   LockKeyhole,
   LogOut,
   Plus,
@@ -62,6 +63,18 @@ type AiStatus = {
   configured: boolean;
   provider: string;
   model: string | null;
+};
+type AnalysisRun = {
+  id: number;
+  provider: string;
+  model: string;
+  requested: number;
+  succeeded: number;
+  fallback: number;
+  durationMs: number;
+  status: string;
+  errorMessage: string;
+  createdAt: string;
 };
 
 const DEFAULT_CANDIDATES: Candidate[] = [
@@ -234,6 +247,8 @@ export default function Home() {
     provider: 'OpenAI',
     model: null,
   });
+  const [showRuns, setShowRuns] = useState(false);
+  const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>([]);
   const selected =
     candidates.find((item) => item.id === selectedId) ?? candidates[0];
   const categories = useMemo(
@@ -317,6 +332,14 @@ export default function Home() {
     const response = await fetch('/api/ai/status');
     if (!response.ok) return;
     setAiStatus((await response.json()) as AiStatus);
+  }
+
+  /** Loads recent model executions for operational review. */
+  async function loadAnalysisRuns(): Promise<void> {
+    const response = await fetch('/api/analysis-runs');
+    if (!response.ok) return;
+    const result = (await response.json()) as { runs?: AnalysisRun[] };
+    setAnalysisRuns(result.runs ?? []);
   }
 
   useEffect(() => {
@@ -548,6 +571,7 @@ export default function Home() {
       const result = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(result.error ?? '导入失败');
       await loadCandidates();
+      void loadAnalysisRuns();
       setImportMessage(`已成功导入 ${imported.length} 条候选产品`);
     } catch (error) {
       setImportMessage(error instanceof Error ? error.message : '导入失败');
@@ -823,6 +847,16 @@ export default function Home() {
                 placeholder="搜索候选产品"
               />
             </label>
+            <button
+              className="import-button"
+              onClick={() => {
+                setShowRuns(true);
+                void loadAnalysisRuns();
+              }}
+            >
+              <History size={17} />
+              运行记录
+            </button>
             <button
               className="report-button"
               onClick={() => {
@@ -1537,6 +1571,60 @@ export default function Home() {
               >
                 <Download size={15} />
                 下载 Markdown
+              </button>
+            </div>
+          </dialog>
+        </div>
+      )}
+      {showRuns && (
+        <div className="modal-backdrop">
+          <dialog
+            open
+            className="modal runs-modal"
+            aria-labelledby="runs-title"
+          >
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">模型运行 · 最近 20 次</span>
+                <h2 id="runs-title">AI 分析记录</h2>
+              </div>
+              <button
+                aria-label="关闭运行记录"
+                onClick={() => setShowRuns(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="runs-list">
+              {analysisRuns.map((run) => (
+                <article className="run-row" key={run.id}>
+                  <span className={`run-state run-${run.status}`} />
+                  <div>
+                    <strong>
+                      {run.provider} · {run.model}
+                    </strong>
+                    <small>
+                      {new Date(run.createdAt).toLocaleString('zh-CN')}
+                    </small>
+                    {run.errorMessage && <p>{run.errorMessage}</p>}
+                  </div>
+                  <div className="run-metrics">
+                    <span>请求 {run.requested}</span>
+                    <span>AI成功 {run.succeeded}</span>
+                    <span>回退 {run.fallback}</span>
+                    <span>{(run.durationMs / 1000).toFixed(1)}s</span>
+                  </div>
+                </article>
+              ))}
+              {analysisRuns.length === 0 && (
+                <div className="report-empty">
+                  暂无运行记录，执行一次 AI 分析后会自动记录。
+                </div>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button type="button" onClick={() => setShowRuns(false)}>
+                关闭
               </button>
             </div>
           </dialog>

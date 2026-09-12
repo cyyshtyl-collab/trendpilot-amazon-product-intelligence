@@ -1404,6 +1404,77 @@ tbody tr:hover,
   align-items: center;
   gap: 6px;
 }
+.runs-modal {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+.runs-list {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.run-row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--line);
+}
+.run-row:last-child {
+  border-bottom: 0;
+}
+.run-state {
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #aaa6b3;
+}
+.run-succeeded {
+  background: #28b889;
+}
+.run-partial {
+  background: #e2a93b;
+}
+.run-failed {
+  background: #e26464;
+}
+.run-row strong,
+.run-row small {
+  display: block;
+}
+.run-row strong {
+  color: #413d4a;
+  font-size: 12px;
+}
+.run-row small {
+  margin-top: 4px;
+  color: #8d8994;
+  font-size: 10px;
+}
+.run-row p {
+  margin: 7px 0 0;
+  color: #b04d4d;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.run-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+  max-width: 220px;
+}
+.run-metrics span {
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: #f3f2f6;
+  color: #706c78;
+  font-size: 10px;
+}
 @media (max-width: 1180px) {
   .content-grid {
     grid-template-columns: 1fr;

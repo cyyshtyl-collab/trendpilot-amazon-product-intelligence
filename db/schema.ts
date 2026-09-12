@@ -39,3 +39,20 @@ export const candidates = sqliteTable(
     uniqueIndex('idx_candidates_asin_market').on(table.asin, table.market),
   ],
 );
+
+export const analysisRuns = sqliteTable(
+  'analysis_runs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    requested: integer('requested').notNull(),
+    succeeded: integer('succeeded').notNull(),
+    fallback: integer('fallback').notNull(),
+    durationMs: integer('duration_ms').notNull(),
+    status: text('status').notNull(),
+    errorMessage: text('error_message').notNull().default(''),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [index('idx_analysis_runs_created_at').on(table.createdAt)],
+);
