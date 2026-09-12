@@ -594,6 +594,76 @@ button {
   font-size: 0.875rem;
 }
 
+.source-runs {
+  border-top: 1px solid #eaecf4;
+  margin-top: 16px;
+  padding-top: 14px;
+}
+
+.source-runs-head,
+.source-run-row {
+  align-items: center;
+  display: flex;
+}
+
+.source-runs-head {
+  justify-content: space-between;
+}
+
+.source-runs-head span,
+.source-runs-empty,
+.source-run-row span,
+.source-run-row time {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.source-runs-empty {
+  margin: 12px 0 0;
+}
+
+.source-runs-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.source-run-row {
+  background: #fafafe;
+  border-radius: 10px;
+  gap: 12px;
+  padding: 9px 11px;
+}
+
+.source-run-row strong {
+  min-width: 120px;
+}
+
+.source-run-row time {
+  margin-left: auto;
+}
+
+.run-dot {
+  border-radius: 999px;
+  height: 8px;
+  width: 8px;
+}
+
+.run-success { background: #27b889; }
+.run-failed { background: #e15b64; }
+
+@media (max-width: 760px) {
+  .source-run-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .source-run-row time {
+    margin-left: 20px;
+    width: 100%;
+  }
+}
+
 .source-action-message {
   margin: 9px 2px 0;
 }

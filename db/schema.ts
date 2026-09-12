@@ -93,3 +93,18 @@ export const alertActions = sqliteTable(
   },
   (table) => [index('idx_alert_actions_status').on(table.status)],
 );
+
+export const sourceRuns = sqliteTable(
+  'source_runs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    source: text('source').notNull(),
+    market: text('market').notNull(),
+    status: text('status').notNull(),
+    itemCount: integer('item_count').notNull().default(0),
+    errorMessage: text('error_message').notNull().default(''),
+    startedAt: text('started_at').notNull(),
+    finishedAt: text('finished_at').notNull(),
+  },
+  (table) => [index('idx_source_runs_started_at').on(table.startedAt)],
+);

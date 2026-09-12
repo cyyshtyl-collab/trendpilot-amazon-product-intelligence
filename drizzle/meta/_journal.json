@@ -43,6 +43,13 @@
       "when": 1789186789532,
       "tag": "0005_left_lady_vermin",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789197710798,
+      "tag": "0006_charming_gambit",
+      "breakpoints": true
     }
   ]
 }

@@ -96,6 +96,16 @@ type CollectionSource = {
   mode: string;
   status: 'ready' | 'setup';
 };
+type SourceRun = {
+  id: number;
+  source: string;
+  market: string;
+  status: 'success' | 'failed';
+  itemCount: number;
+  errorMessage: string;
+  startedAt: string;
+  finishedAt: string;
+};
 type MarketAlert = {
   id: string;
   candidateId: number;
@@ -313,6 +323,7 @@ export default function Home() {
   const [selectedSource, setSelectedSource] = useState('sellersprite');
   const [sourceSyncing, setSourceSyncing] = useState(false);
   const [sourceMessage, setSourceMessage] = useState('');
+  const [sourceRuns, setSourceRuns] = useState<SourceRun[]>([]);
   const [importMessage, setImportMessage] = useState('');
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState('');
@@ -428,6 +439,7 @@ export default function Home() {
         if (result.authenticated) {
           void loadCandidates();
           void loadAiStatus();
+          void loadSourceRuns();
         }
       })
       .catch(() => setIsAuthenticated(false));
@@ -438,6 +450,14 @@ export default function Home() {
     const response = await fetch('/api/ai/status');
     if (!response.ok) return;
     setAiStatus((await response.json()) as AiStatus);
+  }
+
+  /** Loads recent multi-source collection outcomes. */
+  async function loadSourceRuns(): Promise<void> {
+    const response = await fetch('/api/source-runs');
+    if (!response.ok) return;
+    const result = (await response.json()) as { runs?: SourceRun[] };
+    setSourceRuns(result.runs ?? []);
   }
 
   /** Loads recent model executions for operational review. */
@@ -767,12 +787,39 @@ export default function Home() {
     setSourceSyncing(true);
     setSourceMessage('正在读取 Google Trends 美国站实时数据…');
     try {
-      const response = await fetch('/api/sources/google-trends?geo=US');
+      const response = await fetch('/api/sources/google-trends', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ geo: 'US' }),
+      });
       if (!response.ok) {
         const result = (await response.json()) as { error?: string };
         throw new Error(result.error ?? '数据下载失败');
       }
-      const blob = await response.blob();
+      const result = (await response.json()) as {
+        error?: string;
+        items?: Array<{
+          keyword: string;
+          traffic: string;
+          publishedAt: string;
+          source: string;
+        }>;
+      };
+      const rows = [
+        ['关键词', '搜索热度', '发布时间', '站点', '数据来源'],
+        ...(result.items ?? []).map((item) => [
+          item.keyword,
+          item.traffic,
+          item.publishedAt,
+          'US',
+          item.source,
+        ]),
+      ];
+      const csvCell = (value: string) => `"${value.replace(/"/g, '""')}"`;
+      const blob = new Blob(
+        [`\uFEFF${rows.map((row) => row.map(csvCell).join(',')).join('\n')}`],
+        { type: 'text/csv;charset=utf-8' },
+      );
       const href = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = href;
@@ -780,6 +827,7 @@ export default function Home() {
       link.click();
       URL.revokeObjectURL(href);
       setSourceMessage('已下载最新 Google Trends CSV，可直接用于选品补充判断。');
+      await loadSourceRuns();
     } catch (error) {
       setSourceMessage(error instanceof Error ? error.message : '数据下载失败');
     } finally {
@@ -1645,6 +1693,35 @@ export default function Home() {
                   {sourceMessage && (
                     <p className="source-action-message">{sourceMessage}</p>
                   )}
+                  <div className="source-runs">
+                    <div className="source-runs-head">
+                      <strong>最近采集</strong>
+                      <span>{sourceRuns.length ? '已持久保存' : '等待首次运行'}</span>
+                    </div>
+                    {sourceRuns.length === 0 ? (
+                      <p className="source-runs-empty">
+                        点击“抓取并下载 CSV”后，这里会记录执行结果。
+                      </p>
+                    ) : (
+                      <div className="source-runs-list">
+                        {sourceRuns.slice(0, 5).map((run) => (
+                          <div key={run.id} className="source-run-row">
+                            <span
+                              className={
+                                run.status === 'success'
+                                  ? 'run-dot run-success'
+                                  : 'run-dot run-failed'
+                              }
+                            />
+                            <strong>{run.source}</strong>
+                            <span>{run.market}</span>
+                            <span>{run.itemCount} 条</span>
+                            <time>{new Date(run.finishedAt).toLocaleString('zh-CN')}</time>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </article>
                 <div className="phase-metrics">
                   <article>

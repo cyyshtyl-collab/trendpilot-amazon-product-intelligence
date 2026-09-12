@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { env } from 'cloudflare:workers';
 
 type TrendItem = {
   keyword: string;
@@ -12,6 +13,10 @@ const ALLOWED_GEOS = new Set(['US', 'GB', 'DE', 'JP', 'CA', 'AU']);
 async function authorized(): Promise<boolean> {
   const jar = await cookies();
   return jar.get('trendpilot_session')?.value === 'trendpilot-admin-v1';
+}
+
+function db(): D1Database {
+  return (env as unknown as { DB: D1Database }).DB;
 }
 
 function decodeXml(value: string): string {
@@ -86,4 +91,41 @@ export async function GET(request: Request): Promise<Response> {
       'Cache-Control': 'no-store',
     },
   });
+}
+
+/** Runs and records one Google Trends collection job. */
+export async function POST(request: Request): Promise<Response> {
+  if (!(await authorized()))
+    return Response.json({ error: '未登录' }, { status: 401 });
+
+  const startedAt = new Date().toISOString();
+  const body = (await request.json().catch(() => ({}))) as { geo?: string };
+  const requestedGeo = (body.geo ?? 'US').toUpperCase();
+  const geo = ALLOWED_GEOS.has(requestedGeo) ? requestedGeo : 'US';
+  try {
+    const feed = await fetch(
+      `https://trends.google.com/trending/rss?geo=${encodeURIComponent(geo)}`,
+      { headers: { 'User-Agent': 'TrendPilot/1.0' } },
+    );
+    if (!feed.ok) throw new Error(`上游响应 ${feed.status}`);
+    const items = parseFeed(await feed.text()).filter((item) => item.keyword);
+    const finishedAt = new Date().toISOString();
+    await db()
+      .prepare(
+        'INSERT INTO source_runs (source,market,status,item_count,error_message,started_at,finished_at) VALUES (?,?,?,?,?,?,?)',
+      )
+      .bind('Google Trends', geo, 'success', items.length, '', startedAt, finishedAt)
+      .run();
+    return Response.json({ items, geo, finishedAt });
+  } catch (error) {
+    const message = error instanceof Error ? error.message.slice(0, 500) : '未知错误';
+    const finishedAt = new Date().toISOString();
+    await db()
+      .prepare(
+        'INSERT INTO source_runs (source,market,status,item_count,error_message,started_at,finished_at) VALUES (?,?,?,?,?,?,?)',
+      )
+      .bind('Google Trends', geo, 'failed', 0, message, startedAt, finishedAt)
+      .run();
+    return Response.json({ error: 'Google Trends 暂时不可用，请稍后重试' }, { status: 502 });
+  }
 }
