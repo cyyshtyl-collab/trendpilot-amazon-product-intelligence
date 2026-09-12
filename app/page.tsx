@@ -311,6 +311,8 @@ export default function Home() {
   const [editorMode, setEditorMode] = useState<'new' | 'edit' | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [selectedSource, setSelectedSource] = useState('sellersprite');
+  const [sourceSyncing, setSourceSyncing] = useState(false);
+  const [sourceMessage, setSourceMessage] = useState('');
   const [importMessage, setImportMessage] = useState('');
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState('');
@@ -758,6 +760,31 @@ export default function Home() {
     link.download = 'TrendPilot-标准导入模板.csv';
     link.click();
     URL.revokeObjectURL(link.href);
+  }
+
+  /** Fetches the free public trend feed and downloads a normalized CSV snapshot. */
+  async function downloadGoogleTrends(): Promise<void> {
+    setSourceSyncing(true);
+    setSourceMessage('正在读取 Google Trends 美国站实时数据…');
+    try {
+      const response = await fetch('/api/sources/google-trends?geo=US');
+      if (!response.ok) {
+        const result = (await response.json()) as { error?: string };
+        throw new Error(result.error ?? '数据下载失败');
+      }
+      const blob = await response.blob();
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = href;
+      link.download = `TrendPilot-Google-Trends-US-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(href);
+      setSourceMessage('已下载最新 Google Trends CSV，可直接用于选品补充判断。');
+    } catch (error) {
+      setSourceMessage(error instanceof Error ? error.message : '数据下载失败');
+    } finally {
+      setSourceSyncing(false);
+    }
   }
 
   /** Runs explainable scoring for one candidate or the full candidate pool. */
@@ -1598,6 +1625,26 @@ export default function Home() {
                       </button>
                     ))}
                   </div>
+                  <div className="source-quick-action">
+                    <div>
+                      <strong>免费自动源</strong>
+                      <span>
+                        Google Trends · 美国站 · 每次下载当天公开热搜快照
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="primary-button"
+                      disabled={sourceSyncing}
+                      onClick={() => void downloadGoogleTrends()}
+                    >
+                      <Download size={15} />
+                      {sourceSyncing ? '正在获取…' : '抓取并下载 CSV'}
+                    </button>
+                  </div>
+                  {sourceMessage && (
+                    <p className="source-action-message">{sourceMessage}</p>
+                  )}
                 </article>
                 <div className="phase-metrics">
                   <article>
