@@ -108,3 +108,27 @@ export const sourceRuns = sqliteTable(
   },
   (table) => [index('idx_source_runs_started_at').on(table.startedAt)],
 );
+
+export const trendSignals = sqliteTable(
+  'trend_signals',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    keyword: text('keyword').notNull(),
+    source: text('source').notNull(),
+    market: text('market').notNull(),
+    trafficText: text('traffic_text').notNull().default(''),
+    trafficValue: integer('traffic_value').notNull().default(0),
+    publishedAt: text('published_at').notNull().default(''),
+    capturedDate: text('captured_date').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_trend_signals_unique').on(
+      table.keyword,
+      table.source,
+      table.market,
+      table.capturedDate,
+    ),
+    index('idx_trend_signals_created_at').on(table.createdAt),
+  ],
+);

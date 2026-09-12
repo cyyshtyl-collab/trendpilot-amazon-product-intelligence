@@ -53,6 +53,13 @@ function csvCell(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
+function trafficValue(value: string): number {
+  const numeric = Number(value.replace(/[^\d.]/g, '')) || 0;
+  if (/M/i.test(value)) return Math.round(numeric * 1_000_000);
+  if (/K/i.test(value)) return Math.round(numeric * 1_000);
+  return Math.round(numeric);
+}
+
 /** Downloads the current public Google Trends feed as normalized CSV. */
 export async function GET(request: Request): Promise<Response> {
   if (!(await authorized()))
@@ -110,12 +117,31 @@ export async function POST(request: Request): Promise<Response> {
     if (!feed.ok) throw new Error(`上游响应 ${feed.status}`);
     const items = parseFeed(await feed.text()).filter((item) => item.keyword);
     const finishedAt = new Date().toISOString();
-    await db()
-      .prepare(
-        'INSERT INTO source_runs (source,market,status,item_count,error_message,started_at,finished_at) VALUES (?,?,?,?,?,?,?)',
-      )
-      .bind('Google Trends', geo, 'success', items.length, '', startedAt, finishedAt)
-      .run();
+    const capturedDate = finishedAt.slice(0, 10);
+    const statements = [
+      db()
+        .prepare(
+          'INSERT INTO source_runs (source,market,status,item_count,error_message,started_at,finished_at) VALUES (?,?,?,?,?,?,?)',
+        )
+        .bind('Google Trends', geo, 'success', items.length, '', startedAt, finishedAt),
+      ...items.slice(0, 100).map((item) =>
+        db()
+          .prepare(
+            'INSERT INTO trend_signals (keyword,source,market,traffic_text,traffic_value,published_at,captured_date,created_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(keyword,source,market,captured_date) DO UPDATE SET traffic_text=excluded.traffic_text,traffic_value=excluded.traffic_value,published_at=excluded.published_at,created_at=excluded.created_at',
+          )
+          .bind(
+            item.keyword,
+            item.source,
+            geo,
+            item.traffic,
+            trafficValue(item.traffic),
+            item.publishedAt,
+            capturedDate,
+            finishedAt,
+          ),
+      ),
+    ];
+    await db().batch(statements);
     return Response.json({ items, geo, finishedAt });
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : '未知错误';

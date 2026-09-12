@@ -106,6 +106,16 @@ type SourceRun = {
   startedAt: string;
   finishedAt: string;
 };
+type TrendSignal = {
+  id: number;
+  keyword: string;
+  source: string;
+  market: string;
+  trafficText: string;
+  trafficValue: number;
+  publishedAt: string;
+  capturedDate: string;
+};
 type MarketAlert = {
   id: string;
   candidateId: number;
@@ -324,6 +334,7 @@ export default function Home() {
   const [sourceSyncing, setSourceSyncing] = useState(false);
   const [sourceMessage, setSourceMessage] = useState('');
   const [sourceRuns, setSourceRuns] = useState<SourceRun[]>([]);
+  const [trendSignals, setTrendSignals] = useState<TrendSignal[]>([]);
   const [importMessage, setImportMessage] = useState('');
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState('');
@@ -440,6 +451,7 @@ export default function Home() {
           void loadCandidates();
           void loadAiStatus();
           void loadSourceRuns();
+          void loadTrendSignals();
         }
       })
       .catch(() => setIsAuthenticated(false));
@@ -458,6 +470,14 @@ export default function Home() {
     if (!response.ok) return;
     const result = (await response.json()) as { runs?: SourceRun[] };
     setSourceRuns(result.runs ?? []);
+  }
+
+  /** Loads persisted public-market signals for review before candidate creation. */
+  async function loadTrendSignals(): Promise<void> {
+    const response = await fetch('/api/trend-signals');
+    if (!response.ok) return;
+    const result = (await response.json()) as { signals?: TrendSignal[] };
+    setTrendSignals(result.signals ?? []);
   }
 
   /** Loads recent model executions for operational review. */
@@ -828,6 +848,7 @@ export default function Home() {
       URL.revokeObjectURL(href);
       setSourceMessage('已下载最新 Google Trends CSV，可直接用于选品补充判断。');
       await loadSourceRuns();
+      await loadTrendSignals();
     } catch (error) {
       setSourceMessage(error instanceof Error ? error.message : '数据下载失败');
     } finally {
@@ -1718,6 +1739,29 @@ export default function Home() {
                             <span>{run.itemCount} 条</span>
                             <time>{new Date(run.finishedAt).toLocaleString('zh-CN')}</time>
                           </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="signal-pool">
+                    <div className="source-runs-head">
+                      <strong>市场信号池</strong>
+                      <span>{trendSignals.length} 条近期信号</span>
+                    </div>
+                    {trendSignals.length === 0 ? (
+                      <p className="source-runs-empty">
+                        首次运行免费数据源后，热度信号会自动保存在这里。
+                      </p>
+                    ) : (
+                      <div className="signal-grid">
+                        {trendSignals.slice(0, 8).map((signal) => (
+                          <article key={signal.id} className="signal-card">
+                            <div>
+                              <span>{signal.source} · {signal.market}</span>
+                              <strong>{signal.keyword}</strong>
+                            </div>
+                            <em>{signal.trafficText || '趋势上升'}</em>
+                          </article>
                         ))}
                       </div>
                     )}

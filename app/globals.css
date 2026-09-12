@@ -652,6 +652,59 @@ button {
 .run-success { background: #27b889; }
 .run-failed { background: #e15b64; }
 
+.signal-pool {
+  border-top: 1px solid #eaecf4;
+  margin-top: 16px;
+  padding-top: 14px;
+}
+
+.signal-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.signal-card {
+  align-items: flex-start;
+  background: #fafafe;
+  border: 1px solid #ebeaf5;
+  border-radius: 12px;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 12px;
+}
+
+.signal-card div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.signal-card span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.signal-card strong {
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signal-card em {
+  background: #e8f8f2;
+  border-radius: 999px;
+  color: #18845f;
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  font-style: normal;
+  padding: 4px 7px;
+}
+
 @media (max-width: 760px) {
   .source-run-row {
     align-items: flex-start;
@@ -661,6 +714,10 @@ button {
   .source-run-row time {
     margin-left: 20px;
     width: 100%;
+  }
+
+  .signal-grid {
+    grid-template-columns: 1fr;
   }
 }
 
