@@ -597,6 +597,188 @@ button {
 .stage-progress .complete:before {
   background: #aaa5ef;
 }
+.phase-content {
+  display: grid;
+  gap: 16px;
+}
+.phase-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.phase-metrics article {
+  min-height: 116px;
+  padding: 19px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #fff;
+}
+.phase-metrics span,
+.phase-metrics small,
+.phase-metrics strong {
+  display: block;
+}
+.phase-metrics span {
+  color: #777481;
+  font-size: 12px;
+}
+.phase-metrics strong {
+  margin: 8px 0 4px;
+  font-size: 26px;
+  letter-spacing: -0.04em;
+}
+.phase-metrics small {
+  color: #aaa6b2;
+  font-size: 11px;
+}
+.phase-panel {
+  min-height: 420px;
+  padding: 22px;
+}
+.phase-table-wrap {
+  margin-top: 18px;
+  overflow-x: auto;
+}
+.phase-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.phase-table-wrap th {
+  padding: 11px;
+  color: #9995a2;
+  font-size: 11px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+.phase-table-wrap td {
+  padding: 14px 11px;
+  color: #625e6b;
+  font-size: 12px;
+  border-bottom: 1px solid #f0eff4;
+}
+.phase-table-wrap td b,
+.phase-table-wrap td small {
+  display: block;
+}
+.phase-table-wrap td b {
+  color: var(--ink);
+  font-size: 13px;
+}
+.phase-table-wrap td small {
+  margin-top: 3px;
+  color: #aaa6b2;
+}
+.phase-ok {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #e9f7f2;
+  color: #248164;
+  font-size: 11px;
+  font-weight: 700;
+}
+.trend-ranking {
+  display: grid;
+  gap: 9px;
+  margin-top: 18px;
+}
+.trend-ranking > button {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) 70px minmax(180px, 2fr) 85px;
+  gap: 14px;
+  align-items: center;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fff;
+  text-align: left;
+}
+.trend-ranking strong,
+.trend-ranking small {
+  display: block;
+}
+.trend-ranking strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+.trend-ranking small {
+  margin-top: 3px;
+  color: #9995a2;
+  font-size: 11px;
+}
+.trend-ranking > button > span {
+  font-size: 13px;
+  font-weight: 800;
+}
+.trend-ranking i {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #efedf5;
+}
+.trend-ranking i b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6c63e8, #9b94f3);
+}
+.trend-ranking em {
+  color: var(--purple);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  text-align: right;
+}
+.decision-list {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.decision-list article {
+  display: grid;
+  grid-template-columns: 40px minmax(180px, 1fr) 75px 75px 110px;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.decision-list article:last-child {
+  border-bottom: 0;
+}
+.decision-rank {
+  color: #aaa6b2;
+  font-size: 12px;
+  font-weight: 800;
+}
+.decision-list article > div strong,
+.decision-list article > div small {
+  display: block;
+}
+.decision-list article > div strong {
+  font-size: 13px;
+}
+.decision-list article > div small {
+  margin-top: 3px;
+  color: #9995a2;
+  font-size: 11px;
+}
+.decision-list article > b {
+  font-size: 18px;
+}
+.decision-list article > b small {
+  color: #aaa6b2;
+  font-size: 10px;
+}
+.decision-list article > button {
+  border: 0;
+  background: transparent;
+  color: var(--purple);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
 .search {
   height: 40px;
   width: 225px;
@@ -1754,6 +1936,26 @@ tbody tr:hover,
   color: #257b61;
 }
 @media (max-width: 680px) {
+  .phase-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+  .trend-ranking > button {
+    grid-template-columns: 1fr 55px;
+  }
+  .trend-ranking i {
+    grid-column: 1 / -1;
+  }
+  .trend-ranking em {
+    display: none;
+  }
+  .decision-list article {
+    grid-template-columns: 30px 1fr auto;
+  }
+  .decision-list article > .status,
+  .decision-list article > button {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
   .stage-workspace-head {
     grid-template-columns: auto 1fr;
   }

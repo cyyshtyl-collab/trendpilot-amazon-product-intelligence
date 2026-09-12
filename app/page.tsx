@@ -1155,262 +1155,542 @@ export default function Home() {
             ? `${aiStatus.provider} · ${aiStatus.model} 已连接`
             : '真实 AI 未连接 · 当前自动使用可解释预评分'}
         </div>
-        <div className="content-grid">
-          <section className="main-column">
-            <div className="metrics-grid">
-              <article className="metric-card metric-featured">
-                <div className="metric-icon">
-                  <Gauge size={20} />
-                </div>
-                <div>
-                  <span>高潜候选</span>
-                  <strong>{analysis.highPotential}</strong>
-                  <small>总分 ≥ 18</small>
-                </div>
-                <em>+1 本周</em>
-              </article>
-              <article className="metric-card">
-                <div className="metric-icon">
-                  <Activity size={20} />
-                </div>
-                <div>
-                  <span>追踪产品</span>
-                  <strong>{analysis.tracked}</strong>
-                  <small>{analysis.categories} 个重点类目</small>
-                </div>
-                <em>+12.5%</em>
-              </article>
-              <article className="metric-card">
-                <div className="metric-icon">
-                  <TrendingUp size={20} />
-                </div>
-                <div>
-                  <span>平均趋势增幅</span>
-                  <strong>{analysis.averageTrend.toFixed(1)}%</strong>
-                  <small>近 6 个月</small>
-                </div>
-                <em>↑ 4.2%</em>
-              </article>
-              <article className="metric-card">
-                <div className="metric-icon">
-                  <CircleDollarSign size={20} />
-                </div>
-                <div>
-                  <span>目标毛利率</span>
-                  <strong>{analysis.passedMargin.toFixed(1)}%</strong>
-                  <small>通过产品均值</small>
-                </div>
-                <em>达标</em>
-              </article>
-            </div>
-            <article className="panel trend-panel">
-              <div className="panel-head">
-                <div>
-                  <span className="eyebrow">市场信号</span>
-                  <h2>
-                    {hasRealHistory ? '真实指标变化趋势' : '热度预测参考'}
-                  </h2>
-                </div>
-                <div className="trend-controls">
-                  <div className="period-switch" aria-label="趋势周期">
-                    {([7, 30, 90] as const).map((days) => (
-                      <button
-                        key={days}
-                        className={
-                          historyPeriod === days ? 'period-active' : ''
-                        }
-                        onClick={() => setHistoryPeriod(days)}
-                      >
-                        {days}天
-                      </button>
-                    ))}
+        {activeStage === 2 ? (
+          <div className="content-grid">
+            <section className="main-column">
+              <div className="metrics-grid">
+                <article className="metric-card metric-featured">
+                  <div className="metric-icon">
+                    <Gauge size={20} />
                   </div>
-                  <div className="legend">
-                    <span>
-                      <i className="dot-indigo" />
-                      {hasRealHistory ? '搜索量指数' : '搜索需求'}
-                    </span>
-                    <span>
-                      <i className="dot-mint" />
-                      {hasRealHistory ? '评论数指数' : '社媒热度'}
-                    </span>
+                  <div>
+                    <span>高潜候选</span>
+                    <strong>{analysis.highPotential}</strong>
+                    <small>总分 ≥ 18</small>
+                  </div>
+                  <em>+1 本周</em>
+                </article>
+                <article className="metric-card">
+                  <div className="metric-icon">
+                    <Activity size={20} />
+                  </div>
+                  <div>
+                    <span>追踪产品</span>
+                    <strong>{analysis.tracked}</strong>
+                    <small>{analysis.categories} 个重点类目</small>
+                  </div>
+                  <em>+12.5%</em>
+                </article>
+                <article className="metric-card">
+                  <div className="metric-icon">
+                    <TrendingUp size={20} />
+                  </div>
+                  <div>
+                    <span>平均趋势增幅</span>
+                    <strong>{analysis.averageTrend.toFixed(1)}%</strong>
+                    <small>近 6 个月</small>
+                  </div>
+                  <em>↑ 4.2%</em>
+                </article>
+                <article className="metric-card">
+                  <div className="metric-icon">
+                    <CircleDollarSign size={20} />
+                  </div>
+                  <div>
+                    <span>目标毛利率</span>
+                    <strong>{analysis.passedMargin.toFixed(1)}%</strong>
+                    <small>通过产品均值</small>
+                  </div>
+                  <em>达标</em>
+                </article>
+              </div>
+              <article className="panel trend-panel">
+                <div className="panel-head">
+                  <div>
+                    <span className="eyebrow">市场信号</span>
+                    <h2>
+                      {hasRealHistory ? '真实指标变化趋势' : '热度预测参考'}
+                    </h2>
+                  </div>
+                  <div className="trend-controls">
+                    <div className="period-switch" aria-label="趋势周期">
+                      {([7, 30, 90] as const).map((days) => (
+                        <button
+                          key={days}
+                          className={
+                            historyPeriod === days ? 'period-active' : ''
+                          }
+                          onClick={() => setHistoryPeriod(days)}
+                        >
+                          {days}天
+                        </button>
+                      ))}
+                    </div>
+                    <div className="legend">
+                      <span>
+                        <i className="dot-indigo" />
+                        {hasRealHistory ? '搜索量指数' : '搜索需求'}
+                      </span>
+                      <span>
+                        <i className="dot-mint" />
+                        {hasRealHistory ? '评论数指数' : '社媒热度'}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="chart-wrap">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart
-                    data={chartData}
-                    margin={{ top: 10, right: 8, left: -24, bottom: 0 }}
-                  >
-                    <defs>
-                      <linearGradient id="demand" x1="0" y1="0" x2="0" y2="1">
-                        <stop
-                          offset="0%"
-                          stopColor="#6c63e8"
-                          stopOpacity={0.28}
-                        />
-                        <stop
-                          offset="100%"
-                          stopColor="#6c63e8"
-                          stopOpacity={0}
-                        />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid
-                      strokeDasharray="4 4"
-                      vertical={false}
-                      stroke="#e9e8ef"
-                    />
-                    <XAxis
-                      dataKey="month"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: '#878593', fontSize: 12 }}
-                    />
-                    <YAxis
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: '#a09eaa', fontSize: 11 }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        borderRadius: 12,
-                        borderColor: '#e3e1ec',
-                        boxShadow: '0 8px 24px rgba(46,42,78,.08)',
-                      }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="demand"
-                      stroke="#6c63e8"
-                      strokeWidth={3}
-                      fill="url(#demand)"
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="social"
-                      stroke="#24b99a"
-                      strokeWidth={2.5}
-                      fill="transparent"
-                      strokeDasharray="5 5"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="trend-summary">
-                <div>
-                  <span>{hasRealHistory ? '历史快照' : '当前观察'}</span>
-                  <strong>
-                    {hasRealHistory
-                      ? `${snapshots.length} 个数据点`
-                      : selected.name}
-                  </strong>
+                <div className="chart-wrap">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={chartData}
+                      margin={{ top: 10, right: 8, left: -24, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="demand" x1="0" y1="0" x2="0" y2="1">
+                          <stop
+                            offset="0%"
+                            stopColor="#6c63e8"
+                            stopOpacity={0.28}
+                          />
+                          <stop
+                            offset="100%"
+                            stopColor="#6c63e8"
+                            stopOpacity={0}
+                          />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid
+                        strokeDasharray="4 4"
+                        vertical={false}
+                        stroke="#e9e8ef"
+                      />
+                      <XAxis
+                        dataKey="month"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: '#878593', fontSize: 12 }}
+                      />
+                      <YAxis
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: '#a09eaa', fontSize: 11 }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          borderRadius: 12,
+                          borderColor: '#e3e1ec',
+                          boxShadow: '0 8px 24px rgba(46,42,78,.08)',
+                        }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="demand"
+                        stroke="#6c63e8"
+                        strokeWidth={3}
+                        fill="url(#demand)"
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="social"
+                        stroke="#24b99a"
+                        strokeWidth={2.5}
+                        fill="transparent"
+                        strokeDasharray="5 5"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
-                <div>
-                  <span>快速升温</span>
-                  <strong>{analysis.rising} 个</strong>
+                <div className="trend-summary">
+                  <div>
+                    <span>{hasRealHistory ? '历史快照' : '当前观察'}</span>
+                    <strong>
+                      {hasRealHistory
+                        ? `${snapshots.length} 个数据点`
+                        : selected.name}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>快速升温</span>
+                    <strong>{analysis.rising} 个</strong>
+                  </div>
+                  <div>
+                    <span>趋势回落</span>
+                    <strong>{analysis.cooling} 个</strong>
+                  </div>
+                  <p>
+                    {selected.trend >= 15
+                      ? '搜索热度已进入加速区间，建议优先验证评论痛点与供应链。'
+                      : selected.trend < 0
+                        ? '热度正在回落，建议暂停投入并观察下一个采集周期。'
+                        : '需求保持平稳，可结合毛利率和竞争评分继续筛选。'}
+                  </p>
                 </div>
-                <div>
-                  <span>趋势回落</span>
-                  <strong>{analysis.cooling} 个</strong>
+              </article>
+              <article className="panel candidates-panel">
+                <div className="panel-head table-head">
+                  <div>
+                    <span className="eyebrow">候选池</span>
+                    <h2>产品机会排行</h2>
+                  </div>
+                  <div className="filters">
+                    <Filter size={15} />
+                    <select
+                      aria-label="按类目筛选"
+                      value={categoryFilter}
+                      onChange={(event) =>
+                        setCategoryFilter(event.target.value)
+                      }
+                    >
+                      {categories.map((category) => (
+                        <option key={category}>{category}</option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label="候选产品排序"
+                      value={sortBy}
+                      onChange={(event) =>
+                        setSortBy(event.target.value as typeof sortBy)
+                      }
+                    >
+                      <option value="score">按评分</option>
+                      <option value="trend">按趋势</option>
+                      <option value="margin">按毛利率</option>
+                    </select>
+                    {(['全部', '通过', '观察', '淘汰'] as const).map(
+                      (value) => (
+                        <button
+                          className={filter === value ? 'filter-active' : ''}
+                          key={value}
+                          onClick={() => setFilter(value)}
+                        >
+                          {value}
+                        </button>
+                      ),
+                    )}
+                  </div>
                 </div>
-                <p>
-                  {selected.trend >= 15
-                    ? '搜索热度已进入加速区间，建议优先验证评论痛点与供应链。'
-                    : selected.trend < 0
-                      ? '热度正在回落，建议暂停投入并观察下一个采集周期。'
-                      : '需求保持平稳，可结合毛利率和竞争评分继续筛选。'}
-                </p>
-              </div>
-            </article>
-            <article className="panel candidates-panel">
-              <div className="panel-head table-head">
-                <div>
-                  <span className="eyebrow">候选池</span>
-                  <h2>产品机会排行</h2>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>产品</th>
+                        <th>AI 评分</th>
+                        <th>搜索趋势</th>
+                        <th>月销售额</th>
+                        <th>毛利率</th>
+                        <th>结论</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((item) => (
+                        <tr
+                          key={item.id}
+                          className={
+                            selected.id === item.id ? 'row-selected' : ''
+                          }
+                        >
+                          {/* oxlint-disable-next-line jsx-a11y/control-has-associated-label -- labeled button is nested in this data cell */}
+                          <td>
+                            <div className="product-cell">
+                              <span>
+                                <Box size={17} />
+                              </span>
+                              <div>
+                                <button
+                                  className="product-select"
+                                  aria-label={`查看${item.name}评分详情`}
+                                  onClick={() => setSelectedId(item.id)}
+                                >
+                                  {item.name}
+                                </button>
+                                <small>
+                                  {item.category} · {item.market}
+                                  {item.asin ? ` · ${item.asin}` : ''}
+                                </small>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <b className="score-number">
+                              {item.score}
+                              <small>/25</small>
+                            </b>
+                          </td>
+                          <td>
+                            <span
+                              className={
+                                item.trend >= 0 ? 'positive' : 'negative'
+                              }
+                            >
+                              {item.trend >= 0 ? '+' : ''}
+                              {item.trend}%
+                            </span>
+                          </td>
+                          <td>{item.revenue}</td>
+                          <td>{item.margin}%</td>
+                          <td>
+                            <span className={verdictClass(item.verdict)}>
+                              {item.verdict}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {filtered.length === 0 && (
+                    <div className="empty-state">没有找到匹配的候选产品</div>
+                  )}
                 </div>
-                <div className="filters">
-                  <Filter size={15} />
-                  <select
-                    aria-label="按类目筛选"
-                    value={categoryFilter}
-                    onChange={(event) => setCategoryFilter(event.target.value)}
-                  >
-                    {categories.map((category) => (
-                      <option key={category}>{category}</option>
-                    ))}
-                  </select>
-                  <select
-                    aria-label="候选产品排序"
-                    value={sortBy}
-                    onChange={(event) =>
-                      setSortBy(event.target.value as typeof sortBy)
+              </article>
+            </section>
+            <aside className="detail-column">
+              <article className="detail-card">
+                <div className="detail-top">
+                  <div>
+                    <span className={verdictClass(selected.verdict)}>
+                      {selected.verdict}
+                    </span>
+                    <h2>{selected.name}</h2>
+                    <p>
+                      {selected.category} · {selected.market}
+                    </p>
+                  </div>
+                  <div className="detail-actions">
+                    <button
+                      aria-label="编辑候选产品"
+                      onClick={() => setEditorMode('edit')}
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <button
+                      aria-label="删除候选产品"
+                      onClick={handleDeleteCandidate}
+                      disabled={candidates.length <= 1}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+                <div className="total-score">
+                  <div>
+                    <span>AI 综合评分</span>
+                    <strong>
+                      {selected.score}
+                      <small>/25</small>
+                    </strong>
+                  </div>
+                  <div
+                    className="score-ring"
+                    style={
+                      {
+                        '--score': `${selected.score * 4}%`,
+                      } as React.CSSProperties
                     }
                   >
-                    <option value="score">按评分</option>
-                    <option value="trend">按趋势</option>
-                    <option value="margin">按毛利率</option>
-                  </select>
-                  {(['全部', '通过', '观察', '淘汰'] as const).map((value) => (
-                    <button
-                      className={filter === value ? 'filter-active' : ''}
-                      key={value}
-                      onClick={() => setFilter(value)}
-                    >
-                      {value}
-                    </button>
+                    <span>{selected.score * 4}%</span>
+                  </div>
+                </div>
+                <div className="score-list">
+                  {scoreLabels.map((label, index) => (
+                    <div className="score-row" key={label}>
+                      <div>
+                        <span>{label}</span>
+                        <b>{selected.scores[index]}.0</b>
+                      </div>
+                      <div className="score-track">
+                        <i
+                          style={{ width: `${selected.scores[index] * 20}%` }}
+                        />
+                      </div>
+                    </div>
                   ))}
                 </div>
-              </div>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>产品</th>
-                      <th>AI 评分</th>
-                      <th>搜索趋势</th>
-                      <th>月销售额</th>
-                      <th>毛利率</th>
-                      <th>结论</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((item) => (
-                      <tr
-                        key={item.id}
-                        className={
-                          selected.id === item.id ? 'row-selected' : ''
-                        }
-                      >
-                        {/* oxlint-disable-next-line jsx-a11y/control-has-associated-label -- labeled button is nested in this data cell */}
-                        <td>
-                          <div className="product-cell">
-                            <span>
-                              <Box size={17} />
-                            </span>
-                            <div>
-                              <button
-                                className="product-select"
-                                aria-label={`查看${item.name}评分详情`}
-                                onClick={() => setSelectedId(item.id)}
-                              >
-                                {item.name}
-                              </button>
-                              <small>
-                                {item.category} · {item.market}
-                                {item.asin ? ` · ${item.asin}` : ''}
-                              </small>
-                            </div>
+                <div className="section-block">
+                  <div className="section-title">
+                    <Sparkles size={16} />
+                    <h3>机会信号</h3>
+                  </div>
+                  <ul className="signal-list">
+                    {selected.signals.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="section-block">
+                  <div className="section-title">
+                    <Activity size={16} />
+                    <h3>未解决痛点</h3>
+                    <span className="evidence-count">
+                      {selected.reviewText
+                        ? `${selected.reviewText.split(/\r?\n|\|\|/).filter((item) => item.trim()).length} 条评论证据`
+                        : '待补充评论证据'}
+                    </span>
+                  </div>
+                  <div className="pain-tags">
+                    {selected.pains.map((item) => (
+                      <span key={item}>{item}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="selling-point">
+                  <span>SELLING POINT · 智能预评分</span>
+                  <p>{selected.sellingPoint}</p>
+                  <button
+                    disabled={analysisLoading}
+                    onClick={() => void handleAnalyze([selected.id])}
+                  >
+                    {analysisLoading ? '分析中…' : '重新分析当前产品'}{' '}
+                    <ArrowUpRight size={14} />
+                  </button>
+                </div>
+              </article>
+            </aside>
+          </div>
+        ) : (
+          <section className="phase-content">
+            {activeStage === 0 && (
+              <>
+                <div className="phase-metrics">
+                  <article>
+                    <span>产品记录</span>
+                    <strong>{candidates.length}</strong>
+                    <small>已进入候选数据库</small>
+                  </article>
+                  <article>
+                    <span>覆盖站点</span>
+                    <strong>
+                      {new Set(candidates.map((item) => item.market)).size}
+                    </strong>
+                    <small>Amazon 市场</small>
+                  </article>
+                  <article>
+                    <span>有 ASIN</span>
+                    <strong>
+                      {candidates.filter((item) => item.asin).length}
+                    </strong>
+                    <small>可执行增量更新</small>
+                  </article>
+                  <article>
+                    <span>数据完整度</span>
+                    <strong>
+                      {Math.round(
+                        (candidates.filter(
+                          (item) =>
+                            item.price && item.rating && item.searchVolume,
+                        ).length /
+                          Math.max(candidates.length, 1)) *
+                          100,
+                      )}
+                      %
+                    </strong>
+                    <small>价格、评分、搜索量</small>
+                  </article>
+                </div>
+                <article className="panel phase-panel">
+                  <div className="panel-head">
+                    <div>
+                      <span className="eyebrow">采集队列</span>
+                      <h2>最近入库产品</h2>
+                    </div>
+                    <button
+                      className="primary-button"
+                      onClick={() => setShowImport(true)}
+                    >
+                      <Upload size={16} /> 导入新一批数据
+                    </button>
+                  </div>
+                  <div className="phase-table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>产品</th>
+                          <th>ASIN</th>
+                          <th>站点</th>
+                          <th>价格</th>
+                          <th>BSR</th>
+                          <th>搜索量</th>
+                          <th>状态</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {candidates.map((item) => (
+                          <tr key={item.id}>
+                            <td>
+                              <b>{item.name}</b>
+                              <small>{item.category}</small>
+                            </td>
+                            <td>{item.asin || '待补充'}</td>
+                            <td>{item.market}</td>
+                            <td>{item.price || '—'}</td>
+                            <td>{item.bsr || '—'}</td>
+                            <td>{item.searchVolume || '—'}</td>
+                            <td>
+                              <span className="phase-ok">已入库</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </article>
+              </>
+            )}
+            {activeStage === 1 && (
+              <>
+                <div className="phase-metrics">
+                  <article>
+                    <span>快速升温</span>
+                    <strong>{analysis.rising}</strong>
+                    <small>趋势增幅 ≥ 15%</small>
+                  </article>
+                  <article>
+                    <span>趋势回落</span>
+                    <strong>{analysis.cooling}</strong>
+                    <small>需要继续观察</small>
+                  </article>
+                  <article>
+                    <span>平均增幅</span>
+                    <strong>{analysis.averageTrend.toFixed(1)}%</strong>
+                    <small>当前候选池</small>
+                  </article>
+                  <article>
+                    <span>真实快照</span>
+                    <strong>{snapshots.length}</strong>
+                    <small>当前产品数据点</small>
+                  </article>
+                </div>
+                <article className="panel phase-panel trend-stage-panel">
+                  <div className="panel-head">
+                    <div>
+                      <span className="eyebrow">趋势对比</span>
+                      <h2>候选产品热度变化</h2>
+                    </div>
+                    <button
+                      className="secondary-stage-action"
+                      onClick={() => {
+                        setShowAlerts(true);
+                        void loadAlerts();
+                      }}
+                    >
+                      <Bell size={16} /> 异动预警
+                    </button>
+                  </div>
+                  <div className="trend-ranking">
+                    {[...candidates]
+                      .sort((a, b) => b.trend - a.trend)
+                      .map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setSelectedId(item.id);
+                            setActiveStage(2);
+                          }}
+                        >
+                          <div>
+                            <strong>{item.name}</strong>
+                            <small>
+                              {item.category} · {item.market}
+                            </small>
                           </div>
-                        </td>
-                        <td>
-                          <b className="score-number">
-                            {item.score}
-                            <small>/25</small>
-                          </b>
-                        </td>
-                        <td>
                           <span
                             className={
                               item.trend >= 0 ? 'positive' : 'negative'
@@ -1419,125 +1699,105 @@ export default function Home() {
                             {item.trend >= 0 ? '+' : ''}
                             {item.trend}%
                           </span>
-                        </td>
-                        <td>{item.revenue}</td>
-                        <td>{item.margin}%</td>
-                        <td>
-                          <span className={verdictClass(item.verdict)}>
-                            {item.verdict}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {filtered.length === 0 && (
-                  <div className="empty-state">没有找到匹配的候选产品</div>
-                )}
-              </div>
-            </article>
-          </section>
-          <aside className="detail-column">
-            <article className="detail-card">
-              <div className="detail-top">
-                <div>
-                  <span className={verdictClass(selected.verdict)}>
-                    {selected.verdict}
-                  </span>
-                  <h2>{selected.name}</h2>
-                  <p>
-                    {selected.category} · {selected.market}
-                  </p>
-                </div>
-                <div className="detail-actions">
-                  <button
-                    aria-label="编辑候选产品"
-                    onClick={() => setEditorMode('edit')}
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    aria-label="删除候选产品"
-                    onClick={handleDeleteCandidate}
-                    disabled={candidates.length <= 1}
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </div>
-              <div className="total-score">
-                <div>
-                  <span>AI 综合评分</span>
-                  <strong>
-                    {selected.score}
-                    <small>/25</small>
-                  </strong>
-                </div>
-                <div
-                  className="score-ring"
-                  style={
-                    {
-                      '--score': `${selected.score * 4}%`,
-                    } as React.CSSProperties
-                  }
-                >
-                  <span>{selected.score * 4}%</span>
-                </div>
-              </div>
-              <div className="score-list">
-                {scoreLabels.map((label, index) => (
-                  <div className="score-row" key={label}>
-                    <div>
-                      <span>{label}</span>
-                      <b>{selected.scores[index]}.0</b>
-                    </div>
-                    <div className="score-track">
-                      <i style={{ width: `${selected.scores[index] * 20}%` }} />
-                    </div>
+                          <i>
+                            <b
+                              style={{
+                                width: `${Math.min(100, Math.max(5, item.trend + 30))}%`,
+                              }}
+                            />
+                          </i>
+                          <em>查看分析</em>
+                        </button>
+                      ))}
                   </div>
-                ))}
-              </div>
-              <div className="section-block">
-                <div className="section-title">
-                  <Sparkles size={16} />
-                  <h3>机会信号</h3>
+                </article>
+              </>
+            )}
+            {activeStage === 3 && (
+              <>
+                <div className="phase-metrics">
+                  <article>
+                    <span>建议推进</span>
+                    <strong>{analysis.highPotential}</strong>
+                    <small>评分达到通过线</small>
+                  </article>
+                  <article>
+                    <span>继续观察</span>
+                    <strong>
+                      {
+                        candidates.filter((item) => item.verdict === '观察')
+                          .length
+                      }
+                    </strong>
+                    <small>等待下一周期</small>
+                  </article>
+                  <article>
+                    <span>建议淘汰</span>
+                    <strong>
+                      {
+                        candidates.filter((item) => item.verdict === '淘汰')
+                          .length
+                      }
+                    </strong>
+                    <small>停止投入资源</small>
+                  </article>
+                  <article>
+                    <span>通过产品毛利</span>
+                    <strong>{analysis.passedMargin.toFixed(1)}%</strong>
+                    <small>平均目标毛利率</small>
+                  </article>
                 </div>
-                <ul className="signal-list">
-                  {selected.signals.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-              <div className="section-block">
-                <div className="section-title">
-                  <Activity size={16} />
-                  <h3>未解决痛点</h3>
-                  <span className="evidence-count">
-                    {selected.reviewText
-                      ? `${selected.reviewText.split(/\r?\n|\|\|/).filter((item) => item.trim()).length} 条评论证据`
-                      : '待补充评论证据'}
-                  </span>
-                </div>
-                <div className="pain-tags">
-                  {selected.pains.map((item) => (
-                    <span key={item}>{item}</span>
-                  ))}
-                </div>
-              </div>
-              <div className="selling-point">
-                <span>SELLING POINT · 智能预评分</span>
-                <p>{selected.sellingPoint}</p>
-                <button
-                  disabled={analysisLoading}
-                  onClick={() => void handleAnalyze([selected.id])}
-                >
-                  {analysisLoading ? '分析中…' : '重新分析当前产品'}{' '}
-                  <ArrowUpRight size={14} />
-                </button>
-              </div>
-            </article>
-          </aside>
-        </div>
+                <article className="panel phase-panel decision-panel">
+                  <div className="panel-head">
+                    <div>
+                      <span className="eyebrow">决策清单</span>
+                      <h2>本周优先推进</h2>
+                    </div>
+                    <button
+                      className="primary-button"
+                      onClick={() => {
+                        setReportMessage('');
+                        setShowReport(true);
+                      }}
+                    >
+                      <FileOutput size={16} /> 生成完整周报
+                    </button>
+                  </div>
+                  <div className="decision-list">
+                    {reportCandidates.map((item, index) => (
+                      <article key={item.id}>
+                        <span className="decision-rank">
+                          {String(index + 1).padStart(2, '0')}
+                        </span>
+                        <div>
+                          <strong>{item.name}</strong>
+                          <small>
+                            {item.category} · {item.market}
+                          </small>
+                        </div>
+                        <b>
+                          {item.score}
+                          <small>/25</small>
+                        </b>
+                        <span className={verdictClass(item.verdict)}>
+                          {item.verdict}
+                        </span>
+                        <button
+                          onClick={() => {
+                            setSelectedId(item.id);
+                            setActiveStage(2);
+                          }}
+                        >
+                          查看评分 <ArrowUpRight size={14} />
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                </article>
+              </>
+            )}
+          </section>
+        )}
       </section>
       {editorMode && (
         <div className="modal-backdrop">
