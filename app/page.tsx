@@ -1280,7 +1280,11 @@ export default function Home() {
               </p>
             </div>
             <span className="stage-ready">
-              {activeStage === 2 ? 'AI 已连接' : '可用'}
+              {activeStage === 0 && '1 个免费自动源'}
+              {activeStage === 1 && '基于已入库数据'}
+              {activeStage === 2 &&
+                (aiStatus.configured ? `${aiStatus.provider} 已连接` : '规则预评分')}
+              {activeStage === 3 && `${weeklyReports.length} 期周报已保存`}
             </span>
           </div>
           <div className="stage-workspace-actions">
@@ -1362,14 +1366,6 @@ export default function Home() {
             {analysisMessage}
           </div>
         )}
-        <div
-          className={aiStatus.configured ? 'ai-status ai-ready' : 'ai-status'}
-        >
-          <span />
-          {aiStatus.configured
-            ? `${aiStatus.provider} · ${aiStatus.model} 已连接`
-            : '真实 AI 未连接 · 当前自动使用可解释预评分'}
-        </div>
         {activeStage === 2 ? (
           <div className="content-grid">
             <section className="main-column">
