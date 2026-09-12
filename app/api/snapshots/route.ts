@@ -1,10 +1,9 @@
 import { env } from 'cloudflare:workers';
-import { cookies } from 'next/headers';
+import { authorized } from '@/lib/auth';
 
 /** Lists one candidate's numeric history for a bounded reporting period. */
 export async function GET(request: Request) {
-  const jar = await cookies();
-  if (jar.get('trendpilot_session')?.value !== 'trendpilot-admin-v1')
+  if (!(await authorized()))
     return Response.json({ error: '未登录' }, { status: 401 });
   const url = new URL(request.url);
   const candidateId = Number(url.searchParams.get('candidateId'));

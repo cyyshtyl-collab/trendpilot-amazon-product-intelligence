@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { cookies } from 'next/headers';
+import { authorized } from '@/lib/auth';
 
 type CandidateRow = {
   id: number;
@@ -28,11 +28,6 @@ type OpenAIResponse = {
 type SiliconFlowResponse = {
   choices?: Array<{ message?: { content?: string } }>;
 };
-
-async function authorized(): Promise<boolean> {
-  const jar = await cookies();
-  return jar.get('trendpilot_session')?.value === 'trendpilot-admin-v1';
-}
 
 function db(): D1Database {
   return (env as unknown as { DB: D1Database }).DB;

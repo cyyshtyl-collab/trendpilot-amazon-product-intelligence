@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { cookies } from 'next/headers';
+import { authorized } from '@/lib/auth';
 
 type SnapshotPair = Record<string, string | number | null>;
 type AlertLevel = 'high' | 'medium';
@@ -34,8 +34,7 @@ function percentChange(current: number, previous: number): number {
 
 /** Produces actionable marketplace alerts from each product's latest snapshots. */
 export async function GET() {
-  const jar = await cookies();
-  if (jar.get('trendpilot_session')?.value !== 'trendpilot-admin-v1')
+  if (!(await authorized()))
     return Response.json({ error: '未登录' }, { status: 401 });
 
   const database = (env as unknown as { DB: D1Database }).DB;
@@ -207,8 +206,7 @@ export async function GET() {
 
 /** Saves an alert's workflow status and concise processing note. */
 export async function PATCH(request: Request) {
-  const jar = await cookies();
-  if (jar.get('trendpilot_session')?.value !== 'trendpilot-admin-v1')
+  if (!(await authorized()))
     return Response.json({ error: '未登录' }, { status: 401 });
   const body = (await request.json()) as {
     id?: unknown;

@@ -1,10 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { cookies } from 'next/headers';
-
-async function authorized(): Promise<boolean> {
-  const jar = await cookies();
-  return jar.get('trendpilot_session')?.value === 'trendpilot-admin-v1';
-}
+import { authorized } from '@/lib/auth';
 
 function db(): D1Database {
   return (env as unknown as { DB: D1Database }).DB;

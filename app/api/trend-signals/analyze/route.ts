@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { cookies } from 'next/headers';
+import { authorized } from '@/lib/auth';
 
 type AiDecision = {
   id: number;
@@ -7,11 +7,6 @@ type AiDecision = {
   score: number;
   reason: string;
 };
-
-async function authorized(): Promise<boolean> {
-  const jar = await cookies();
-  return jar.get('trendpilot_session')?.value === 'trendpilot-admin-v1';
-}
 
 function runtime(): {
   db: D1Database;

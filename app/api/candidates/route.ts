@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { cookies } from 'next/headers';
+import { authorized } from '@/lib/auth';
 
 type CandidatePayload = {
   id?: number;
@@ -61,10 +61,6 @@ function deduplicateCandidates(candidates: CandidateView[]): CandidateView[] {
   );
 }
 
-async function authorized(): Promise<boolean> {
-  const jar = await cookies();
-  return jar.get('trendpilot_session')?.value === 'trendpilot-admin-v1';
-}
 function db(): D1Database {
   return (env as unknown as { DB: D1Database }).DB;
 }
@@ -194,10 +190,14 @@ export async function GET() {
     pains: JSON.parse(String(row.pains_json)),
     sellingPoint: row.selling_point,
   })) as CandidateView[];
-  const uniqueCandidates = deduplicateCandidates(candidates);
+  const visibleCandidates = candidates.filter(
+    (candidate) => candidate.asin || candidate.category !== '待归类',
+  );
+  const uniqueCandidates = deduplicateCandidates(visibleCandidates);
   return Response.json({
     candidates: uniqueCandidates,
-    duplicateCount: candidates.length - uniqueCandidates.length,
+    duplicateCount: visibleCandidates.length - uniqueCandidates.length,
+    pendingSignalCount: candidates.length - visibleCandidates.length,
   });
 }
 

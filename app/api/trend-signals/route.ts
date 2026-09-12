@@ -1,10 +1,6 @@
 import { env } from 'cloudflare:workers';
-import { cookies } from 'next/headers';
-
-async function authorized(): Promise<boolean> {
-  const jar = await cookies();
-  return jar.get('trendpilot_session')?.value === 'trendpilot-admin-v1';
-}
+import { authorized } from '@/lib/auth';
+import { productIntent } from '@/lib/product-intent';
 
 function db(): D1Database {
   return (env as unknown as { DB: D1Database }).DB;
@@ -49,13 +45,24 @@ export async function POST(request: Request): Promise<Response> {
 
   const signal = await db()
     .prepare(
-      'SELECT id,keyword,source,market,traffic_text,traffic_value,candidate_id FROM trend_signals WHERE id=?',
+      'SELECT id,keyword,source,market,traffic_text,traffic_value,candidate_id,ai_verdict,ai_score FROM trend_signals WHERE id=?',
     )
     .bind(body.id)
     .first<Record<string, unknown>>();
   if (!signal) return Response.json({ error: '市场信号不存在' }, { status: 404 });
   if (signal.candidate_id)
     return Response.json({ candidateId: signal.candidate_id, existing: true });
+  const intent = productIntent(String(signal.keyword));
+  if (!intent.allowed)
+    return Response.json(
+      { error: `不能转入候选：${intent.reason}` },
+      { status: 422 },
+    );
+  if (signal.ai_verdict !== '推荐' || Number(signal.ai_score) < 60)
+    return Response.json(
+      { error: '请先完成 AI 商品意图筛选，仅“推荐”且达到 60 分的信号可转入' },
+      { status: 422 },
+    );
 
   const now = new Date().toISOString();
   const marketName = signal.market === 'US' ? '美国站' : String(signal.market);
@@ -66,7 +73,7 @@ export async function POST(request: Request): Promise<Response> {
     .bind(
       String(signal.keyword),
       null,
-      '待归类',
+      '市场机会',
       marketName,
       15,
       '观察',

@@ -1,10 +1,9 @@
 import { env } from 'cloudflare:workers';
-import { cookies } from 'next/headers';
+import { authorized } from '@/lib/auth';
 
 /** Reports AI readiness without exposing any secret value. */
 export async function GET() {
-  const jar = await cookies();
-  if (jar.get('trendpilot_session')?.value !== 'trendpilot-admin-v1')
+  if (!(await authorized()))
     return Response.json({ error: '未登录' }, { status: 401 });
   const runtime = env as unknown as {
     AI_PROVIDER?: string;

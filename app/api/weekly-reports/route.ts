@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { cookies } from 'next/headers';
+import { authorized } from '@/lib/auth';
 
 type CandidateRow = {
   id: number;
@@ -12,11 +12,6 @@ type CandidateRow = {
   margin: number;
   selling_point: string;
 };
-
-async function authorized(): Promise<boolean> {
-  const jar = await cookies();
-  return jar.get('trendpilot_session')?.value === 'trendpilot-admin-v1';
-}
 
 function db(): D1Database {
   return (env as unknown as { DB: D1Database }).DB;
@@ -92,7 +87,7 @@ export async function POST(): Promise<Response> {
     return Response.json({ error: '未登录' }, { status: 401 });
   const candidates = await db()
     .prepare(
-      'SELECT id,name,category,market,score,verdict,trend,margin,selling_point FROM candidates ORDER BY score DESC,id DESC',
+      "SELECT id,name,category,market,score,verdict,trend,margin,selling_point FROM candidates WHERE category<>'待归类' OR asin IS NOT NULL ORDER BY score DESC,id DESC",
     )
     .all<CandidateRow>();
   const rows = deduplicateRows(candidates.results);

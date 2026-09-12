@@ -1,15 +1,10 @@
-import { cookies } from 'next/headers';
 import { env } from 'cloudflare:workers';
+import { authorized } from '@/lib/auth';
 import {
   fetchGoogleTrends,
   normalizeTrendGeo,
   persistGoogleTrends,
 } from '@/lib/google-trends';
-
-async function authorized(): Promise<boolean> {
-  const jar = await cookies();
-  return jar.get('trendpilot_session')?.value === 'trendpilot-admin-v1';
-}
 
 function db(): D1Database {
   return (env as unknown as { DB: D1Database }).DB;

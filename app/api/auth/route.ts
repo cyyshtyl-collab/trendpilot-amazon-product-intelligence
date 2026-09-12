@@ -1,14 +1,15 @@
 import { cookies } from 'next/headers';
-
-const COOKIE_NAME = 'trendpilot_session';
-const SESSION_VALUE = 'trendpilot-admin-v1';
+import {
+  authorized,
+  createSessionToken,
+  SESSION_COOKIE,
+  sessionMaxAge,
+  validCredentials,
+} from '@/lib/auth';
 
 /** Returns whether the current request owns a valid administrator session. */
 export async function GET() {
-  const jar = await cookies();
-  return Response.json({
-    authenticated: jar.get(COOKIE_NAME)?.value === SESSION_VALUE,
-  });
+  return Response.json({ authenticated: await authorized() });
 }
 
 /** Validates administrator credentials and creates an HTTP-only session. */
@@ -17,16 +18,16 @@ export async function POST(request: Request) {
     username?: string;
     password?: string;
   };
-  if (body.username !== 'admin' || body.password !== 'admin000000') {
+  if (!validCredentials(body.username?.trim() ?? '', body.password ?? '')) {
     return Response.json({ error: '账号或密码不正确' }, { status: 401 });
   }
   const jar = await cookies();
-  jar.set(COOKIE_NAME, SESSION_VALUE, {
+  jar.set(SESSION_COOKIE, await createSessionToken(), {
     httpOnly: true,
     secure: new URL(request.url).protocol === 'https:',
     sameSite: 'strict',
     path: '/',
-    maxAge: 60 * 60 * 8,
+    maxAge: sessionMaxAge(),
   });
   return Response.json({ authenticated: true });
 }
@@ -34,6 +35,6 @@ export async function POST(request: Request) {
 /** Clears the current administrator session. */
 export async function DELETE() {
   const jar = await cookies();
-  jar.delete(COOKIE_NAME);
+  jar.delete(SESSION_COOKIE);
   return Response.json({ authenticated: false });
 }
