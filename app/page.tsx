@@ -386,6 +386,11 @@ export default function Home() {
   const [alertNotes, setAlertNotes] = useState<Record<string, string>>({});
   const selected =
     candidates.find((item) => item.id === selectedId) ?? candidates[0];
+  const selectedDataQuality = selected?.asin && selected?.price !== '$0' && selected?.rating
+    ? '真实数据'
+    : selected?.asin || selected?.price !== '$0' || selected?.searchVolume
+      ? '部分数据'
+      : '示例数据';
   const categories = useMemo(
     () => ['全部类目', ...new Set(candidates.map((item) => item.category))],
     [candidates],
@@ -1663,6 +1668,9 @@ export default function Home() {
                     <p>
                       {selected.category} · {selected.market}
                     </p>
+                    <span className={`data-quality quality-${selectedDataQuality}`}>
+                      {selectedDataQuality}
+                    </span>
                   </div>
                   <div className="detail-actions">
                     <button
@@ -2189,12 +2197,21 @@ export default function Home() {
         )}
       </section>
       {editorMode && (
-        <div className="modal-backdrop">
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setEditorMode(null);
+          }}
+        >
           <dialog
             open
-            className="modal"
+            className="modal candidate-editor-modal"
             aria-labelledby="add-title"
             key={`${editorMode}-${selected.id}`}
+            onCancel={() => setEditorMode(null)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setEditorMode(null);
+            }}
           >
             <div className="modal-head">
               <div>
@@ -2204,6 +2221,7 @@ export default function Home() {
                 </h2>
               </div>
               <button
+                autoFocus
                 aria-label="关闭新增候选窗口"
                 onClick={() => setEditorMode(null)}
               >
