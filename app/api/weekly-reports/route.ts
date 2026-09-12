@@ -29,6 +29,20 @@ function weekStart(): string {
   return today.toISOString().slice(0, 10);
 }
 
+function deduplicateRows(rows: CandidateRow[]): CandidateRow[] {
+  const unique = new Map<string, CandidateRow>();
+  for (const row of rows) {
+    const key = `${row.market}|${row.name.trim().toLocaleLowerCase('zh-CN')}`;
+    const current = unique.get(key);
+    if (!current || row.score > current.score || (row.score === current.score && row.id > current.id)) {
+      unique.set(key, row);
+    }
+  }
+  return [...unique.values()].sort(
+    (left, right) => right.score - left.score || right.id - left.id,
+  );
+}
+
 function buildMarkdown(rows: CandidateRow[], week: string): string {
   const highPotential = rows.filter((item) => item.verdict === '通过');
   const watch = rows.filter((item) => item.verdict === '观察');
@@ -81,7 +95,7 @@ export async function POST(): Promise<Response> {
       'SELECT id,name,category,market,score,verdict,trend,margin,selling_point FROM candidates ORDER BY score DESC,id DESC',
     )
     .all<CandidateRow>();
-  const rows = candidates.results;
+  const rows = deduplicateRows(candidates.results);
   const week = weekStart();
   const now = new Date().toISOString();
   const markdown = buildMarkdown(rows, week);

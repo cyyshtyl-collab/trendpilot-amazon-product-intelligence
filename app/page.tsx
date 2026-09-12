@@ -343,6 +343,7 @@ export default function Home() {
   const [selectedId, setSelectedId] = useState(1);
   const [activeStage, setActiveStage] = useState(2);
   const [candidates, setCandidates] = useState<Candidate[]>(DEFAULT_CANDIDATES);
+  const [duplicateCount, setDuplicateCount] = useState(0);
   const [filter, setFilter] = useState<'全部' | Verdict>('全部');
   const [categoryFilter, setCategoryFilter] = useState('全部类目');
   const [sortBy, setSortBy] = useState<'score' | 'trend' | 'margin'>('score');
@@ -1026,9 +1027,13 @@ export default function Home() {
   async function loadCandidates(): Promise<void> {
     const response = await fetch('/api/candidates');
     if (!response.ok) return;
-    const result = (await response.json()) as { candidates?: Candidate[] };
+    const result = (await response.json()) as {
+      candidates?: Candidate[];
+      duplicateCount?: number;
+    };
     if (Array.isArray(result.candidates) && result.candidates.length > 0) {
       setCandidates(result.candidates);
+      setDuplicateCount(Math.max(0, result.duplicateCount ?? 0));
       setSelectedId(result.candidates[0].id);
       return;
     }
@@ -1041,8 +1046,12 @@ export default function Home() {
     }
     const seeded = await fetch('/api/candidates');
     if (seeded.ok) {
-      const data = (await seeded.json()) as { candidates: Candidate[] };
+      const data = (await seeded.json()) as {
+        candidates: Candidate[];
+        duplicateCount?: number;
+      };
       setCandidates(data.candidates);
+      setDuplicateCount(Math.max(0, data.duplicateCount ?? 0));
       setSelectedId(data.candidates[0]?.id ?? 1);
     }
   }
@@ -1197,10 +1206,13 @@ export default function Home() {
           </div>
           <div className="connector-row">
             <span className="live-dot" />
-            演示数据已同步
+            数据库已连接 · {candidates.length} 条候选
           </div>
-          <button>
-            管理数据源 <ArrowUpRight size={14} />
+          {duplicateCount > 0 && (
+            <small>已合并显示 {duplicateCount} 条同名重复记录</small>
+          )}
+          <button onClick={() => setActiveStage(0)}>
+            进入数据采集 <ArrowUpRight size={14} />
           </button>
         </div>
         <div className="sidebar-foot">

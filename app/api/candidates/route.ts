@@ -25,6 +25,42 @@ type CandidatePayload = {
   sellingPoint?: string;
 };
 
+type CandidateView = CandidatePayload & { id: number };
+
+function completeness(candidate: CandidateView): number {
+  return [
+    Boolean(candidate.asin),
+    candidate.price !== '$0',
+    Number(candidate.bsr) > 0,
+    Number(candidate.rating) > 0,
+    Number(candidate.reviews) > 0,
+    Number(candidate.searchVolume) > 0,
+    Boolean(candidate.reviewText?.trim()),
+  ].filter(Boolean).length;
+}
+
+function deduplicateCandidates(candidates: CandidateView[]): CandidateView[] {
+  const unique = new Map<string, CandidateView>();
+  for (const candidate of candidates) {
+    const normalizedName = candidate.name?.trim().toLocaleLowerCase('zh-CN') ?? '';
+    const key = candidate.asin
+      ? `${candidate.market}|asin:${candidate.asin}`
+      : `${candidate.market}|name:${normalizedName}`;
+    const current = unique.get(key);
+    if (
+      !current ||
+      completeness(candidate) > completeness(current) ||
+      (completeness(candidate) === completeness(current) &&
+        Number(candidate.score) > Number(current.score))
+    ) {
+      unique.set(key, candidate);
+    }
+  }
+  return [...unique.values()].sort(
+    (left, right) => Number(right.score) - Number(left.score) || right.id - left.id,
+  );
+}
+
 async function authorized(): Promise<boolean> {
   const jar = await cookies();
   return jar.get('trendpilot_session')?.value === 'trendpilot-admin-v1';
@@ -157,8 +193,12 @@ export async function GET() {
     signals: JSON.parse(String(row.signals_json)),
     pains: JSON.parse(String(row.pains_json)),
     sellingPoint: row.selling_point,
-  }));
-  return Response.json({ candidates });
+  })) as CandidateView[];
+  const uniqueCandidates = deduplicateCandidates(candidates);
+  return Response.json({
+    candidates: uniqueCandidates,
+    duplicateCount: candidates.length - uniqueCandidates.length,
+  });
 }
 
 /** Creates one candidate or imports a validated batch of up to 200 candidates. */
