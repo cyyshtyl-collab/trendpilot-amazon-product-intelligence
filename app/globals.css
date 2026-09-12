@@ -695,6 +695,23 @@ button {
   white-space: nowrap;
 }
 
+.signal-card button {
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  color: #6255d9;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 2px 0;
+  text-align: left;
+}
+
+.signal-card button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .signal-card em {
   background: #e8f8f2;
   border-radius: 999px;

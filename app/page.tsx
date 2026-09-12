@@ -115,6 +115,8 @@ type TrendSignal = {
   trafficValue: number;
   publishedAt: string;
   capturedDate: string;
+  candidateId?: number | null;
+  promotedAt?: string | null;
 };
 type MarketAlert = {
   id: string;
@@ -335,6 +337,7 @@ export default function Home() {
   const [sourceMessage, setSourceMessage] = useState('');
   const [sourceRuns, setSourceRuns] = useState<SourceRun[]>([]);
   const [trendSignals, setTrendSignals] = useState<TrendSignal[]>([]);
+  const [promotingSignalId, setPromotingSignalId] = useState<number | null>(null);
   const [importMessage, setImportMessage] = useState('');
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState('');
@@ -478,6 +481,37 @@ export default function Home() {
     if (!response.ok) return;
     const result = (await response.json()) as { signals?: TrendSignal[] };
     setTrendSignals(result.signals ?? []);
+  }
+
+  /** Promotes one reviewed signal into an editable observation candidate. */
+  async function promoteTrendSignal(signal: TrendSignal): Promise<void> {
+    if (signal.candidateId) {
+      setSelectedId(signal.candidateId);
+      setActiveStage(2);
+      return;
+    }
+    setPromotingSignalId(signal.id);
+    setSourceMessage(`正在将“${signal.keyword}”转入候选池…`);
+    try {
+      const response = await fetch('/api/trend-signals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: signal.id }),
+      });
+      const result = (await response.json()) as {
+        error?: string;
+        candidateId?: number;
+      };
+      if (!response.ok || !result.candidateId)
+        throw new Error(result.error ?? '转入失败');
+      await Promise.all([loadCandidates(), loadTrendSignals()]);
+      setSelectedId(result.candidateId);
+      setSourceMessage('已转入候选池，并保留原始市场信号。');
+    } catch (error) {
+      setSourceMessage(error instanceof Error ? error.message : '转入失败');
+    } finally {
+      setPromotingSignalId(null);
+    }
   }
 
   /** Loads recent model executions for operational review. */
@@ -1759,6 +1793,17 @@ export default function Home() {
                             <div>
                               <span>{signal.source} · {signal.market}</span>
                               <strong>{signal.keyword}</strong>
+                              <button
+                                type="button"
+                                disabled={promotingSignalId === signal.id}
+                                onClick={() => void promoteTrendSignal(signal)}
+                              >
+                                {signal.candidateId
+                                  ? '已转入 · 查看候选'
+                                  : promotingSignalId === signal.id
+                                    ? '转入中…'
+                                    : '转入候选'}
+                              </button>
                             </div>
                             <em>{signal.trafficText || '趋势上升'}</em>
                           </article>

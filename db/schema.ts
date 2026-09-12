@@ -120,6 +120,8 @@ export const trendSignals = sqliteTable(
     trafficValue: integer('traffic_value').notNull().default(0),
     publishedAt: text('published_at').notNull().default(''),
     capturedDate: text('captured_date').notNull(),
+    candidateId: integer('candidate_id'),
+    promotedAt: text('promoted_at'),
     createdAt: text('created_at').notNull(),
   },
   (table) => [
