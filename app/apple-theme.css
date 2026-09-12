@@ -95,7 +95,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .topbar p { color:#77777d; font-size: 12px; font-weight: 600; }
 .topbar h1 { font-size: 28px; letter-spacing: -.045em; }
 .top-actions { gap: 9px; }
-.search-box, .top-actions > button, .logout-button {
+.search, .top-actions > button:not(.primary-button), .logout-button {
   border: 1px solid rgba(20,20,24,.07) !important;
   background: rgba(255,255,255,.78) !important;
   box-shadow: 0 7px 22px rgba(31,42,72,.06);
@@ -105,6 +105,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   color:#fff !important; border:0 !important;
   background: linear-gradient(110deg,#007aff 0%,#5e5ce6 55%,#9b42f5 100%) !important;
   box-shadow: 0 11px 26px rgba(71,78,235,.28), inset 0 1px rgba(255,255,255,.3) !important;
+}
+.top-actions > .primary-button {
+  color:#fff !important;
+  background:linear-gradient(110deg,#007aff 0%,#5e5ce6 55%,#9b42f5 100%) !important;
+  box-shadow:0 11px 26px rgba(71,78,235,.28), inset 0 1px rgba(255,255,255,.3) !important;
 }
 .primary-button:hover, .add-button:hover, .login-submit:hover { box-shadow:0 14px 32px rgba(71,78,235,.36) !important; transform:translateY(-1px); }
 
