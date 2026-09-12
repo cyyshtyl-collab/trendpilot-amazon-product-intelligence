@@ -64,6 +64,13 @@
       "when": 1789198669612,
       "tag": "0008_wise_tusk",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1789198902401,
+      "tag": "0009_absent_magma",
+      "breakpoints": true
     }
   ]
 }

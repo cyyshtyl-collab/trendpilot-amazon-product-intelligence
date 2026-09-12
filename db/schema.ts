@@ -122,6 +122,10 @@ export const trendSignals = sqliteTable(
     capturedDate: text('captured_date').notNull(),
     candidateId: integer('candidate_id'),
     promotedAt: text('promoted_at'),
+    aiVerdict: text('ai_verdict'),
+    aiScore: integer('ai_score'),
+    aiReason: text('ai_reason'),
+    screenedAt: text('screened_at'),
     createdAt: text('created_at').notNull(),
   },
   (table) => [

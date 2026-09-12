@@ -16,7 +16,7 @@ export async function GET(): Promise<Response> {
     return Response.json({ error: '未登录' }, { status: 401 });
   const result = await db()
     .prepare(
-      'SELECT id,keyword,source,market,traffic_text,traffic_value,published_at,captured_date,candidate_id,promoted_at FROM trend_signals ORDER BY captured_date DESC, traffic_value DESC, id DESC LIMIT 20',
+      'SELECT id,keyword,source,market,traffic_text,traffic_value,published_at,captured_date,candidate_id,promoted_at,ai_verdict,ai_score,ai_reason,screened_at FROM trend_signals ORDER BY captured_date DESC, traffic_value DESC, id DESC LIMIT 20',
     )
     .all<Record<string, unknown>>();
   return Response.json({
@@ -31,6 +31,10 @@ export async function GET(): Promise<Response> {
       capturedDate: row.captured_date,
       candidateId: row.candidate_id,
       promotedAt: row.promoted_at,
+      aiVerdict: row.ai_verdict,
+      aiScore: row.ai_score,
+      aiReason: row.ai_reason,
+      screenedAt: row.screened_at,
     })),
   });
 }

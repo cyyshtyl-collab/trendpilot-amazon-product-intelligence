@@ -117,6 +117,10 @@ type TrendSignal = {
   capturedDate: string;
   candidateId?: number | null;
   promotedAt?: string | null;
+  aiVerdict?: '推荐' | '观察' | '忽略' | null;
+  aiScore?: number | null;
+  aiReason?: string | null;
+  screenedAt?: string | null;
 };
 type MarketAlert = {
   id: string;
@@ -338,6 +342,7 @@ export default function Home() {
   const [sourceRuns, setSourceRuns] = useState<SourceRun[]>([]);
   const [trendSignals, setTrendSignals] = useState<TrendSignal[]>([]);
   const [promotingSignalId, setPromotingSignalId] = useState<number | null>(null);
+  const [screeningSignals, setScreeningSignals] = useState(false);
   const [importMessage, setImportMessage] = useState('');
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState('');
@@ -511,6 +516,23 @@ export default function Home() {
       setSourceMessage(error instanceof Error ? error.message : '转入失败');
     } finally {
       setPromotingSignalId(null);
+    }
+  }
+
+  /** Requests decision-support labels for recent unpromoted signals. */
+  async function screenTrendSignals(): Promise<void> {
+    setScreeningSignals(true);
+    setSourceMessage('AI 正在判断近期市场信号的商品化机会…');
+    try {
+      const response = await fetch('/api/trend-signals/analyze', { method: 'POST' });
+      const result = (await response.json()) as { error?: string; analyzed?: number; message?: string };
+      if (!response.ok) throw new Error(result.error ?? 'AI 筛选失败');
+      await loadTrendSignals();
+      setSourceMessage(result.message ?? `AI 已完成 ${result.analyzed ?? 0} 条信号筛选。`);
+    } catch (error) {
+      setSourceMessage(error instanceof Error ? error.message : 'AI 筛选失败');
+    } finally {
+      setScreeningSignals(false);
     }
   }
 
@@ -1780,7 +1802,15 @@ export default function Home() {
                   <div className="signal-pool">
                     <div className="source-runs-head">
                       <strong>市场信号池</strong>
-                      <span>{trendSignals.length} 条近期信号</span>
+                      <button
+                        type="button"
+                        className="signal-screen-button"
+                        disabled={screeningSignals || trendSignals.length === 0}
+                        onClick={() => void screenTrendSignals()}
+                      >
+                        <Sparkles size={14} />
+                        {screeningSignals ? 'AI 筛选中…' : 'AI 筛选信号'}
+                      </button>
                     </div>
                     {trendSignals.length === 0 ? (
                       <p className="source-runs-empty">
@@ -1793,6 +1823,12 @@ export default function Home() {
                             <div>
                               <span>{signal.source} · {signal.market}</span>
                               <strong>{signal.keyword}</strong>
+                              {signal.aiVerdict && (
+                                <p className={`signal-advice advice-${signal.aiVerdict}`}>
+                                  {signal.aiVerdict} · {signal.aiScore ?? 0}分
+                                  {signal.aiReason ? ` · ${signal.aiReason}` : ''}
+                                </p>
+                              )}
                               <button
                                 type="button"
                                 disabled={promotingSignalId === signal.id}
