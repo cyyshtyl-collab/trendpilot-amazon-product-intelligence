@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 
 type SnapshotPair = Record<string, string | number | null>;
 type AlertLevel = 'high' | 'medium';
+type AlertStatus = 'pending' | 'acknowledged' | 'resolved';
 
 type MarketAlert = {
   id: string;
@@ -16,6 +17,8 @@ type MarketAlert = {
   detail: string;
   action: string;
   date: string;
+  status: AlertStatus;
+  note: string;
 };
 
 /** Converts stored currency-like values into comparable numbers. */
@@ -36,9 +39,10 @@ export async function GET() {
     return Response.json({ error: '未登录' }, { status: 401 });
 
   const database = (env as unknown as { DB: D1Database }).DB;
-  const result = await database
-    .prepare(
-      `WITH ranked AS (
+  const [result, actionResult] = await Promise.all([
+    database
+      .prepare(
+        `WITH ranked AS (
         SELECT candidate_id, captured_date, price, bsr, rating, reviews,
           search_volume, margin,
           ROW_NUMBER() OVER (
@@ -59,8 +63,18 @@ export async function GET() {
       JOIN ranked curr ON curr.candidate_id = c.id AND curr.snapshot_rank = 1
       JOIN ranked prev ON prev.candidate_id = c.id AND prev.snapshot_rank = 2
       ORDER BY c.id DESC`,
-    )
-    .all<SnapshotPair>();
+      )
+      .all<SnapshotPair>(),
+    database
+      .prepare('SELECT alert_key,status,note FROM alert_actions')
+      .all<Record<string, string>>(),
+  ]);
+  const actions = new Map(
+    actionResult.results.map((row) => [
+      row.alert_key,
+      { status: row.status as AlertStatus, note: row.note },
+    ]),
+  );
 
   const alerts: MarketAlert[] = [];
   const add = (
@@ -72,8 +86,10 @@ export async function GET() {
     detail: string,
     action: string,
   ) => {
+    const id = `${row.id}-${row.current_date}-${key}`;
+    const disposition = actions.get(id);
     alerts.push({
-      id: `${row.id}-${row.current_date}-${key}`,
+      id,
       candidateId: Number(row.id),
       product: String(row.name),
       asin: String(row.asin ?? ''),
@@ -84,6 +100,8 @@ export async function GET() {
       detail,
       action,
       date: String(row.current_date),
+      status: disposition?.status ?? 'pending',
+      note: disposition?.note ?? '',
     });
   };
 
@@ -175,9 +193,45 @@ export async function GET() {
   return Response.json({
     alerts,
     summary: {
-      high: alerts.filter((alert) => alert.level === 'high').length,
-      medium: alerts.filter((alert) => alert.level === 'medium').length,
+      high: alerts.filter(
+        (alert) => alert.level === 'high' && alert.status !== 'resolved',
+      ).length,
+      medium: alerts.filter(
+        (alert) => alert.level === 'medium' && alert.status !== 'resolved',
+      ).length,
+      pending: alerts.filter((alert) => alert.status === 'pending').length,
       comparedProducts: result.results.length,
     },
   });
+}
+
+/** Saves an alert's workflow status and concise processing note. */
+export async function PATCH(request: Request) {
+  const jar = await cookies();
+  if (jar.get('trendpilot_session')?.value !== 'trendpilot-admin-v1')
+    return Response.json({ error: '未登录' }, { status: 401 });
+  const body = (await request.json()) as {
+    id?: unknown;
+    status?: unknown;
+    note?: unknown;
+  };
+  const id = String(body.id ?? '').trim();
+  const status = String(body.status ?? '') as AlertStatus;
+  const note = String(body.note ?? '')
+    .trim()
+    .slice(0, 500);
+  if (!id || !['pending', 'acknowledged', 'resolved'].includes(status))
+    return Response.json({ error: '预警状态无效' }, { status: 400 });
+
+  const database = (env as unknown as { DB: D1Database }).DB;
+  await database
+    .prepare(
+      `INSERT INTO alert_actions (alert_key,status,note,updated_at)
+       VALUES (?,?,?,?)
+       ON CONFLICT(alert_key) DO UPDATE SET
+         status=excluded.status,note=excluded.note,updated_at=excluded.updated_at`,
+    )
+    .bind(id, status, note, new Date().toISOString())
+    .run();
+  return Response.json({ ok: true, id, status, note });
 }

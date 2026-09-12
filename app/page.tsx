@@ -101,6 +101,8 @@ type MarketAlert = {
   detail: string;
   action: string;
   date: string;
+  status: 'pending' | 'acknowledged' | 'resolved';
+  note: string;
 };
 
 const DEFAULT_CANDIDATES: Candidate[] = [
@@ -283,7 +285,12 @@ export default function Home() {
     high: 0,
     medium: 0,
     comparedProducts: 0,
+    pending: 0,
   });
+  const [alertFilter, setAlertFilter] = useState<
+    'all' | 'pending' | 'acknowledged' | 'resolved'
+  >('all');
+  const [alertNotes, setAlertNotes] = useState<Record<string, string>>({});
   const selected =
     candidates.find((item) => item.id === selectedId) ?? candidates[0];
   const categories = useMemo(
@@ -399,12 +406,39 @@ export default function Home() {
     if (!response.ok) return;
     const result = (await response.json()) as {
       alerts?: MarketAlert[];
-      summary?: { high: number; medium: number; comparedProducts: number };
+      summary?: {
+        high: number;
+        medium: number;
+        comparedProducts: number;
+        pending: number;
+      };
     };
     setMarketAlerts(result.alerts ?? []);
     setAlertSummary(
-      result.summary ?? { high: 0, medium: 0, comparedProducts: 0 },
+      result.summary ?? { high: 0, medium: 0, comparedProducts: 0, pending: 0 },
     );
+    setAlertNotes(
+      Object.fromEntries(
+        (result.alerts ?? []).map((alert) => [alert.id, alert.note]),
+      ),
+    );
+  }
+
+  /** Persists one alert's workflow status and current note. */
+  async function updateAlert(
+    alert: MarketAlert,
+    status: MarketAlert['status'],
+  ): Promise<void> {
+    const response = await fetch('/api/alerts', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: alert.id,
+        status,
+        note: alertNotes[alert.id] ?? '',
+      }),
+    });
+    if (response.ok) await loadAlerts();
   }
 
   /** Loads the selected product's recorded marketplace snapshots. */
@@ -1774,40 +1808,94 @@ export default function Home() {
                 <span>需关注</span>
               </div>
               <div>
-                <strong>{alertSummary.comparedProducts}</strong>
-                <span>已比较产品</span>
+                <strong>{alertSummary.pending}</strong>
+                <span>待处理</span>
               </div>
             </div>
-            <div className="alerts-list">
-              {marketAlerts.map((alert) => (
-                <article
-                  className={`alert-row alert-${alert.level}`}
-                  key={alert.id}
+            <div className="alert-filters" aria-label="预警状态筛选">
+              {[
+                ['all', '全部'],
+                ['pending', '待处理'],
+                ['acknowledged', '已确认'],
+                ['resolved', '已解决'],
+              ].map(([value, label]) => (
+                <button
+                  className={alertFilter === value ? 'active' : ''}
+                  key={value}
+                  onClick={() => setAlertFilter(value as typeof alertFilter)}
                 >
-                  <div className="alert-row-head">
-                    <span className="alert-level">
-                      {alert.level === 'high' ? '高风险' : '需关注'}
-                    </span>
-                    <span className="alert-type">{alert.type}</span>
-                    <time>{alert.date}</time>
-                  </div>
-                  <button
-                    className="alert-product"
-                    onClick={() => {
-                      setSelectedId(alert.candidateId);
-                      setShowAlerts(false);
-                    }}
-                  >
-                    {alert.product} · {alert.market}
-                  </button>
-                  <strong>{alert.summary}</strong>
-                  <p>{alert.detail}</p>
-                  <div className="alert-action">
-                    <b>建议：</b>
-                    {alert.action}
-                  </div>
-                </article>
+                  {label}
+                </button>
               ))}
+              <span>已比较 {alertSummary.comparedProducts} 个产品</span>
+            </div>
+            <div className="alerts-list">
+              {marketAlerts
+                .filter(
+                  (alert) =>
+                    alertFilter === 'all' || alert.status === alertFilter,
+                )
+                .map((alert) => (
+                  <article
+                    className={`alert-row alert-${alert.level} alert-status-${alert.status}`}
+                    key={alert.id}
+                  >
+                    <div className="alert-row-head">
+                      <span className="alert-level">
+                        {alert.level === 'high' ? '高风险' : '需关注'}
+                      </span>
+                      <span className="alert-type">{alert.type}</span>
+                      <span className="alert-workflow-status">
+                        {alert.status === 'pending'
+                          ? '待处理'
+                          : alert.status === 'acknowledged'
+                            ? '已确认'
+                            : '已解决'}
+                      </span>
+                      <time>{alert.date}</time>
+                    </div>
+                    <button
+                      className="alert-product"
+                      onClick={() => {
+                        setSelectedId(alert.candidateId);
+                        setShowAlerts(false);
+                      }}
+                    >
+                      {alert.product} · {alert.market}
+                    </button>
+                    <strong>{alert.summary}</strong>
+                    <p>{alert.detail}</p>
+                    <div className="alert-action">
+                      <b>建议：</b>
+                      {alert.action}
+                    </div>
+                    <div className="alert-disposition">
+                      <input
+                        aria-label={`${alert.product}处理备注`}
+                        value={alertNotes[alert.id] ?? ''}
+                        maxLength={500}
+                        placeholder="填写处理备注（可选）"
+                        onChange={(event) =>
+                          setAlertNotes((notes) => ({
+                            ...notes,
+                            [alert.id]: event.target.value,
+                          }))
+                        }
+                      />
+                      <button
+                        onClick={() => void updateAlert(alert, 'acknowledged')}
+                      >
+                        确认预警
+                      </button>
+                      <button
+                        className="resolve-alert"
+                        onClick={() => void updateAlert(alert, 'resolved')}
+                      >
+                        标记解决
+                      </button>
+                    </div>
+                  </article>
+                ))}
               {marketAlerts.length === 0 && (
                 <div className="alert-empty">
                   <Bell size={28} />

@@ -82,3 +82,14 @@ export const candidateSnapshots = sqliteTable(
     index('idx_snapshots_captured_date').on(table.capturedDate),
   ],
 );
+
+export const alertActions = sqliteTable(
+  'alert_actions',
+  {
+    alertKey: text('alert_key').primaryKey(),
+    status: text('status').notNull().default('pending'),
+    note: text('note').notNull().default(''),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [index('idx_alert_actions_status').on(table.status)],
+);

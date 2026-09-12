@@ -1482,6 +1482,31 @@ tbody tr:hover,
 .alert-kpis span {
   display: block;
 }
+.alert-filters {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 13px;
+}
+.alert-filters button {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: #777481;
+  font-size: 12px;
+}
+.alert-filters button.active {
+  border-color: var(--purple);
+  background: rgba(108, 99, 232, 0.08);
+  color: var(--purple);
+  font-weight: 750;
+}
+.alert-filters > span {
+  margin-left: auto;
+  color: #9794a1;
+  font-size: 12px;
+}
 .alert-kpis strong {
   font-size: 23px;
 }
@@ -1506,6 +1531,10 @@ tbody tr:hover,
   border-left-color: #d85151;
   background: #fffafa;
 }
+.alert-row.alert-status-resolved {
+  opacity: 0.62;
+  border-left-color: #8da49b;
+}
 .alert-row-head {
   display: flex;
   align-items: center;
@@ -1525,6 +1554,11 @@ tbody tr:hover,
   color: #8b5d1d;
   font-size: 11px;
   font-weight: 750;
+}
+.alert-workflow-status {
+  color: #797483;
+  font-size: 11px;
+  font-weight: 700;
 }
 .alert-high .alert-level {
   background: #f9dddd;
@@ -1561,6 +1595,50 @@ tbody tr:hover,
   color: #5d5868;
   font-size: 12px;
   line-height: 1.5;
+}
+.alert-disposition {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  margin-top: 10px;
+}
+.alert-disposition input {
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--ink);
+  font-size: 12px;
+}
+.alert-disposition button {
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: #625d70;
+  font-size: 12px;
+  font-weight: 700;
+}
+.alert-disposition .resolve-alert {
+  border-color: #b9dfd2;
+  background: #eff9f5;
+  color: #257b61;
+}
+@media (max-width: 680px) {
+  .alert-disposition {
+    grid-template-columns: 1fr 1fr;
+  }
+  .alert-disposition input {
+    grid-column: 1 / -1;
+  }
+  .alert-filters {
+    flex-wrap: wrap;
+  }
+  .alert-filters > span {
+    width: 100%;
+    margin-left: 0;
+  }
 }
 .alert-empty {
   padding: 38px 24px;
