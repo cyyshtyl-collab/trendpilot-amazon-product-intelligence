@@ -89,6 +89,13 @@ type CandidateSnapshot = {
   revenue: string;
   margin: number;
 };
+type CollectionSource = {
+  id: string;
+  name: string;
+  scope: string;
+  mode: string;
+  status: 'ready' | 'setup';
+};
 type MarketAlert = {
   id: string;
   candidateId: number;
@@ -224,6 +231,43 @@ const scoreLabels = [
   '供应链可控性',
   '双线协同性',
 ];
+const collectionSources: CollectionSource[] = [
+  {
+    id: 'sellersprite',
+    name: '卖家精灵',
+    scope: 'Listing · 关键词 · BSR',
+    mode: 'API / CSV',
+    status: 'ready',
+  },
+  {
+    id: 'octoparse',
+    name: 'Octoparse',
+    scope: 'Listing · 评论 · 价格',
+    mode: '定时任务 / CSV',
+    status: 'ready',
+  },
+  {
+    id: 'tiktok',
+    name: 'TikTok Creative Center',
+    scope: '热视频 · 话题 · 广告',
+    mode: '网页数据',
+    status: 'setup',
+  },
+  {
+    id: 'google-trends',
+    name: 'Google Trends',
+    scope: '搜索趋势 · 地区热度',
+    mode: '网页数据 / CSV',
+    status: 'ready',
+  },
+  {
+    id: 'custom',
+    name: '自定义渠道',
+    scope: '供应商 · 线下调研 · 其他',
+    mode: '标准 CSV',
+    status: 'ready',
+  },
+];
 
 /** Returns a stable status class for supported product verdicts. */
 function verdictClass(verdict: Verdict): string {
@@ -266,6 +310,7 @@ export default function Home() {
   const [query, setQuery] = useState('');
   const [editorMode, setEditorMode] = useState<'new' | 'edit' | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [selectedSource, setSelectedSource] = useState('sellersprite');
   const [importMessage, setImportMessage] = useState('');
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState('');
@@ -672,7 +717,10 @@ export default function Home() {
           scores,
           score,
           verdict: score >= 18 ? '通过' : score >= 15 ? '观察' : '淘汰',
-          signals: ['CSV 批量导入，等待趋势数据更新'],
+          signals: [
+            `${collectionSources.find((source) => source.id === selectedSource)?.name ?? '外部渠道'}数据已导入`,
+            '等待下一采集周期更新趋势',
+          ],
           pains: ['等待 AI 评论摘要分析'],
           sellingPoint: '等待 AI 生成卖点文案',
         } satisfies Omit<Candidate, 'id'>;
@@ -1504,6 +1552,53 @@ export default function Home() {
           <section className="phase-content">
             {activeStage === 0 && (
               <>
+                <article className="panel source-center">
+                  <div className="panel-head">
+                    <div>
+                      <span className="eyebrow">多源采集中心</span>
+                      <h2>数据渠道</h2>
+                    </div>
+                    <span className="source-summary">
+                      {
+                        collectionSources.filter(
+                          (source) => source.status === 'ready',
+                        ).length
+                      }{' '}
+                      个渠道可用
+                    </span>
+                  </div>
+                  <div className="source-grid">
+                    {collectionSources.map((source) => (
+                      <button
+                        key={source.id}
+                        className={
+                          selectedSource === source.id
+                            ? 'source-card source-selected'
+                            : 'source-card'
+                        }
+                        onClick={() => setSelectedSource(source.id)}
+                      >
+                        <span className="source-mark">
+                          {source.name.slice(0, 1)}
+                        </span>
+                        <div>
+                          <strong>{source.name}</strong>
+                          <small>{source.scope}</small>
+                          <em>{source.mode}</em>
+                        </div>
+                        <i
+                          className={
+                            source.status === 'ready'
+                              ? 'source-ready'
+                              : 'source-setup'
+                          }
+                        >
+                          {source.status === 'ready' ? '可导入' : '待配置'}
+                        </i>
+                      </button>
+                    ))}
+                  </div>
+                </article>
                 <div className="phase-metrics">
                   <article>
                     <span>产品记录</span>
@@ -1923,10 +2018,31 @@ export default function Home() {
                 ×
               </button>
             </div>
+            <label className="source-select-label">
+              本次数据来源
+              <select
+                value={selectedSource}
+                onChange={(event) => setSelectedSource(event.target.value)}
+              >
+                {collectionSources.map((source) => (
+                  <option value={source.id} key={source.id}>
+                    {source.name} · {source.mode}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="upload-zone">
               <Upload size={28} />
               <strong>选择 CSV 文件</strong>
-              <span>支持卖家精灵、Octoparse 导出结果，每次最多 200 条</span>
+              <span>
+                当前来源：
+                {
+                  collectionSources.find(
+                    (source) => source.id === selectedSource,
+                  )?.name
+                }
+                ，每次最多 200 条
+              </span>
               <input
                 type="file"
                 accept=".csv,text/csv"

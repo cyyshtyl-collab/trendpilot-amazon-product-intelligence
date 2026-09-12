@@ -553,6 +553,113 @@ button {
   display: grid;
   gap: 16px;
 }
+.source-center {
+  padding: 19px;
+}
+.source-summary {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #e9f7f2;
+  color: #248164;
+  font-size: 11px;
+  font-weight: 750;
+}
+.source-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 15px;
+}
+.source-card {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 9px;
+  text-align: left;
+  transition: 0.16s ease;
+}
+.source-card:hover {
+  border-color: #bcb8ed;
+  transform: translateY(-1px);
+}
+.source-card.source-selected {
+  border-color: var(--purple);
+  background: #f8f7ff;
+  box-shadow: 0 0 0 2px rgba(108, 99, 232, 0.08);
+}
+.source-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--purple-soft);
+  color: var(--purple);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+}
+.source-card strong,
+.source-card small,
+.source-card em {
+  display: block;
+}
+.source-card strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-card small {
+  min-height: 30px;
+  margin-top: 4px;
+  color: #8f8b98;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.source-card em {
+  margin-top: 5px;
+  color: #aaa6b2;
+  font-size: 9px;
+  font-style: normal;
+}
+.source-card > i {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 3px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+}
+.source-ready {
+  background: #e9f7f2;
+  color: #248164;
+}
+.source-setup {
+  background: #fff1dd;
+  color: #9b691f;
+}
+.source-select-label {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+  color: #686472;
+  font-size: 12px;
+  font-weight: 700;
+}
+.source-select-label select {
+  height: 40px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+}
 .phase-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2025,6 +2132,9 @@ tbody tr:hover,
   font-size: 10px;
 }
 @media (max-width: 1180px) {
+  .source-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   .stage-workspace {
     grid-template-columns: 1fr;
     gap: 12px;
@@ -2058,6 +2168,9 @@ tbody tr:hover,
   }
 }
 @media (max-width: 760px) {
+  .source-grid {
+    grid-template-columns: 1fr 1fr;
+  }
   .stage-workspace-actions {
     padding-left: 0;
   }
