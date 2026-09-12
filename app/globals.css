@@ -549,6 +549,28 @@ button {
   font-size: 12px;
   font-weight: 700;
 }
+.ai-status {
+  margin: -8px 0 16px;
+  color: #837f8d;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+}
+.ai-status span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #bbb7c4;
+}
+.ai-status.ai-ready {
+  color: #277757;
+  font-weight: 700;
+}
+.ai-status.ai-ready span {
+  background: #28b889;
+  box-shadow: 0 0 0 3px #dff5ec;
+}
 .content-grid {
   display: grid;
   grid-template-columns: minmax(620px, 1fr) 330px;

@@ -58,6 +58,11 @@ type Candidate = {
   pains: string[];
   sellingPoint: string;
 };
+type AiStatus = {
+  configured: boolean;
+  provider: string;
+  model: string | null;
+};
 
 const DEFAULT_CANDIDATES: Candidate[] = [
   {
@@ -224,6 +229,11 @@ export default function Home() {
   const [analysisMessage, setAnalysisMessage] = useState('');
   const [showReport, setShowReport] = useState(false);
   const [reportMessage, setReportMessage] = useState('');
+  const [aiStatus, setAiStatus] = useState<AiStatus>({
+    configured: false,
+    provider: 'OpenAI',
+    model: null,
+  });
   const selected =
     candidates.find((item) => item.id === selectedId) ?? candidates[0];
   const categories = useMemo(
@@ -294,10 +304,20 @@ export default function Home() {
       .then((response) => response.json())
       .then((result: { authenticated?: boolean }) => {
         setIsAuthenticated(result.authenticated === true);
-        if (result.authenticated) void loadCandidates();
+        if (result.authenticated) {
+          void loadCandidates();
+          void loadAiStatus();
+        }
       })
       .catch(() => setIsAuthenticated(false));
   }, []);
+
+  /** Reads AI readiness without requesting or exposing provider credentials. */
+  async function loadAiStatus(): Promise<void> {
+    const response = await fetch('/api/ai/status');
+    if (!response.ok) return;
+    setAiStatus((await response.json()) as AiStatus);
+  }
 
   useEffect(() => {
     const context = (
@@ -565,10 +585,16 @@ export default function Home() {
       const result = (await response.json()) as {
         analyzed?: number;
         error?: string;
+        mode?: string;
+        fallbackCount?: number;
       };
       if (!response.ok) throw new Error(result.error ?? '预评分失败');
       await loadCandidates();
-      setAnalysisMessage(`已完成 ${result.analyzed ?? 0} 个产品的智能预评分`);
+      setAnalysisMessage(
+        result.mode === 'openai'
+          ? `已用 ${aiStatus.model ?? 'OpenAI'} 完成 ${result.analyzed ?? 0} 个产品分析`
+          : `已完成 ${result.analyzed ?? 0} 个产品的智能预评分${result.fallbackCount ? `，${result.fallbackCount} 个已安全回退` : ''}`,
+      );
     } catch (error) {
       setAnalysisMessage(error instanceof Error ? error.message : '预评分失败');
     } finally {
@@ -640,6 +666,7 @@ export default function Home() {
     setLoginError('');
     setIsAuthenticated(true);
     await loadCandidates();
+    await loadAiStatus();
   }
 
   /** Ends the current local preview session. */
@@ -812,7 +839,11 @@ export default function Home() {
               onClick={() => void handleAnalyze()}
             >
               <Sparkles size={17} />
-              {analysisLoading ? '评分中…' : '批量预评分'}
+              {analysisLoading
+                ? '评分中…'
+                : aiStatus.configured
+                  ? '批量 AI 分析'
+                  : '批量预评分'}
             </button>
             <button
               className="import-button"
@@ -846,6 +877,14 @@ export default function Home() {
             {analysisMessage}
           </div>
         )}
+        <div
+          className={aiStatus.configured ? 'ai-status ai-ready' : 'ai-status'}
+        >
+          <span />
+          {aiStatus.configured
+            ? `${aiStatus.provider} · ${aiStatus.model} 已连接`
+            : '真实 AI 未连接 · 当前自动使用可解释预评分'}
+        </div>
         <div className="content-grid">
           <section className="main-column">
             <div className="metrics-grid">

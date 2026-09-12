@@ -20,6 +20,12 @@ type Analysis = {
   sellingPoint: string;
 };
 
+type OpenAIResponse = {
+  output?: Array<{
+    content?: Array<{ type?: string; text?: string }>;
+  }>;
+};
+
 async function authorized(): Promise<boolean> {
   const jar = await cookies();
   return jar.get('trendpilot_session')?.value === 'trendpilot-admin-v1';
@@ -31,6 +37,97 @@ function db(): D1Database {
 
 function clampScore(value: number): number {
   return Math.min(5, Math.max(1, value));
+}
+
+function runtimeConfig(): { apiKey?: string; model?: string } {
+  const runtime = env as unknown as {
+    OPENAI_API_KEY?: string;
+    OPENAI_MODEL?: string;
+  };
+  return { apiKey: runtime.OPENAI_API_KEY, model: runtime.OPENAI_MODEL };
+}
+
+/** Requests one evidence-grounded scoring result from the configured OpenAI model. */
+async function analyzeWithOpenAI(candidate: CandidateRow): Promise<Analysis> {
+  const { apiKey, model } = runtimeConfig();
+  if (!apiKey || !model) throw new Error('AI 未配置');
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      store: false,
+      instructions:
+        '你是亚马逊选品分析师。只能依据输入数据评分，不得编造评论证据。五项评分依次为需求真实性、竞争可切入度、差异化空间、供应链可控性、双线协同性，每项1到5分。Selling Point 必须是克制、合规的英文短句。',
+      input: JSON.stringify({
+        product: candidate.name,
+        category: candidate.category,
+        trendPercent: candidate.trend,
+        reviewCount: candidate.reviews,
+        marginPercent: candidate.margin,
+        negativeReviews: candidate.review_text.slice(0, 12000),
+      }),
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'amazon_product_analysis',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              scores: {
+                type: 'array',
+                minItems: 5,
+                maxItems: 5,
+                items: { type: 'integer', minimum: 1, maximum: 5 },
+              },
+              score: { type: 'integer', minimum: 5, maximum: 25 },
+              verdict: { type: 'string', enum: ['通过', '观察', '淘汰'] },
+              signals: {
+                type: 'array',
+                minItems: 2,
+                maxItems: 5,
+                items: { type: 'string' },
+              },
+              pains: {
+                type: 'array',
+                minItems: 1,
+                maxItems: 5,
+                items: { type: 'string' },
+              },
+              sellingPoint: { type: 'string' },
+            },
+            required: [
+              'scores',
+              'score',
+              'verdict',
+              'signals',
+              'pains',
+              'sellingPoint',
+            ],
+          },
+        },
+      },
+    }),
+  });
+  if (!response.ok) throw new Error(`OpenAI 请求失败：${response.status}`);
+  const data = (await response.json()) as OpenAIResponse;
+  const text = data.output
+    ?.flatMap((item) => item.content ?? [])
+    .find((item) => item.type === 'output_text')?.text;
+  if (!text) throw new Error('模型没有返回结构化结果');
+  const parsed = JSON.parse(text) as Analysis;
+  if (!Array.isArray(parsed.scores) || parsed.scores.length !== 5)
+    throw new Error('模型评分格式无效');
+  parsed.scores = parsed.scores.map(clampScore) as Analysis['scores'];
+  parsed.score = parsed.scores.reduce((sum, value) => sum + value, 0);
+  parsed.verdict =
+    parsed.score >= 18 ? '通过' : parsed.score >= 15 ? '观察' : '淘汰';
+  return parsed;
 }
 
 /** Produces an explainable pre-score from collected market facts. */
@@ -152,8 +249,24 @@ export async function POST(request: Request) {
   const result = await query.all<CandidateRow>();
   if (!result.results.length)
     return Response.json({ error: '没有可评分的候选产品' }, { status: 400 });
-  const statements = result.results.map((candidate) => {
-    const output = analyze(candidate);
+  const configured = Boolean(runtimeConfig().apiKey && runtimeConfig().model);
+  let fallbackCount = 0;
+  const outputs = await Promise.all(
+    result.results.map(async (candidate, index) => {
+      if (!configured || index >= 20) {
+        if (configured && index >= 20) fallbackCount += 1;
+        return analyze(candidate);
+      }
+      try {
+        return await analyzeWithOpenAI(candidate);
+      } catch {
+        fallbackCount += 1;
+        return analyze(candidate);
+      }
+    }),
+  );
+  const statements = result.results.map((candidate, index) => {
+    const output = outputs[index];
     return db()
       .prepare(
         'UPDATE candidates SET score=?,verdict=?,scores_json=?,signals_json=?,pains_json=?,selling_point=?,updated_at=? WHERE id=?',
@@ -172,6 +285,8 @@ export async function POST(request: Request) {
   await db().batch(statements);
   return Response.json({
     analyzed: statements.length,
-    mode: 'explainable-pre-score',
+    mode:
+      configured && fallbackCount === 0 ? 'openai' : 'explainable-pre-score',
+    fallbackCount,
   });
 }
