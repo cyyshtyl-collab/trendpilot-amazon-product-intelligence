@@ -258,6 +258,7 @@ export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [selectedId, setSelectedId] = useState(1);
+  const [activeStage, setActiveStage] = useState(2);
   const [candidates, setCandidates] = useState<Candidate[]>(DEFAULT_CANDIDATES);
   const [filter, setFilter] = useState<'全部' | Verdict>('全部');
   const [categoryFilter, setCategoryFilter] = useState('全部类目');
@@ -911,8 +912,10 @@ export default function Home() {
             const Icon = stage.icon;
             return (
               <button
-                className={`stage ${index === 2 ? 'stage-active' : ''}`}
+                className={`stage ${index === activeStage ? 'stage-active' : ''}`}
                 key={stage.number}
+                onClick={() => setActiveStage(index)}
+                aria-current={index === activeStage ? 'step' : undefined}
               >
                 <span className="stage-icon">
                   <Icon size={18} />
@@ -1033,6 +1036,111 @@ export default function Home() {
             </button>
           </div>
         </header>
+        <section className="stage-workspace" aria-live="polite">
+          <div className="stage-workspace-head">
+            <div
+              className={`stage-workspace-icon stage-workspace-${activeStage + 1}`}
+            >
+              {activeStage === 0 && <Database size={22} />}
+              {activeStage === 1 && <BarChart3 size={22} />}
+              {activeStage === 2 && <Sparkles size={22} />}
+              {activeStage === 3 && <FileOutput size={22} />}
+            </div>
+            <div>
+              <span className="eyebrow">阶段 {stages[activeStage].number}</span>
+              <h2>{stages[activeStage].name}工作区</h2>
+              <p>
+                {activeStage === 0 &&
+                  '导入市场数据并形成可持续更新的产品快照。'}
+                {activeStage === 1 &&
+                  '比较不同采集周期，定位正在升温或转弱的机会。'}
+                {activeStage === 2 &&
+                  '用统一评分卡判断机会质量，提炼痛点与卖点。'}
+                {activeStage === 3 &&
+                  '形成候选清单、周报和需要推进的决策动作。'}
+              </p>
+            </div>
+            <span className="stage-ready">
+              {activeStage === 2 ? 'AI 已连接' : '可用'}
+            </span>
+          </div>
+          <div className="stage-workspace-actions">
+            {activeStage === 0 && (
+              <>
+                <button
+                  className="primary-button"
+                  onClick={() => {
+                    setImportMessage('');
+                    setShowImport(true);
+                  }}
+                >
+                  <Upload size={16} /> 导入采集数据
+                </button>
+                <span>支持标准 CSV，按 ASIN + 站点自动增量更新</span>
+              </>
+            )}
+            {activeStage === 1 && (
+              <>
+                <button
+                  className="primary-button"
+                  onClick={() => setActiveStage(2)}
+                >
+                  <TrendingUp size={16} /> 查看趋势与候选池
+                </button>
+                <button
+                  className="secondary-stage-action"
+                  onClick={() => {
+                    setShowAlerts(true);
+                    void loadAlerts();
+                  }}
+                >
+                  <Bell size={16} /> 查看异动预警
+                </button>
+              </>
+            )}
+            {activeStage === 2 && (
+              <>
+                <button
+                  className="primary-button"
+                  disabled={analysisLoading}
+                  onClick={() => void handleAnalyze()}
+                >
+                  <Sparkles size={16} />
+                  {analysisLoading ? '评分中…' : '运行批量 AI 评分'}
+                </button>
+                <span>
+                  当前使用 {aiStatus.model ?? '规则评分'} · 五维评分卡
+                </span>
+              </>
+            )}
+            {activeStage === 3 && (
+              <>
+                <button
+                  className="primary-button"
+                  onClick={() => {
+                    setReportMessage('');
+                    setShowReport(true);
+                  }}
+                >
+                  <FileOutput size={16} /> 生成本周决策报告
+                </button>
+                <span>{analysis.highPotential} 个高潜候选等待推进</span>
+              </>
+            )}
+          </div>
+          <div className="stage-progress" aria-label="四阶段完成情况">
+            {stages.map((stage, index) => (
+              <button
+                key={stage.number}
+                className={index <= activeStage ? 'complete' : ''}
+                onClick={() => setActiveStage(index)}
+              >
+                <i />
+                <span>{stage.name}</span>
+              </button>
+            ))}
+          </div>
+        </section>
         {analysisMessage && (
           <div className="analysis-toast" role="status">
             <Sparkles size={15} />
