@@ -122,6 +122,19 @@ type TrendSignal = {
   aiReason?: string | null;
   screenedAt?: string | null;
 };
+type WeeklyReport = {
+  id: number;
+  weekStart: string;
+  title: string;
+  markdown: string;
+  trackedCount: number;
+  highPotentialCount: number;
+  watchCount: number;
+  alertCount: number;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
 type MarketAlert = {
   id: string;
   candidateId: number;
@@ -343,6 +356,8 @@ export default function Home() {
   const [trendSignals, setTrendSignals] = useState<TrendSignal[]>([]);
   const [promotingSignalId, setPromotingSignalId] = useState<number | null>(null);
   const [screeningSignals, setScreeningSignals] = useState(false);
+  const [weeklyReports, setWeeklyReports] = useState<WeeklyReport[]>([]);
+  const [reportGenerating, setReportGenerating] = useState(false);
   const [importMessage, setImportMessage] = useState('');
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState('');
@@ -460,6 +475,7 @@ export default function Home() {
           void loadAiStatus();
           void loadSourceRuns();
           void loadTrendSignals();
+          void loadWeeklyReports();
         }
       })
       .catch(() => setIsAuthenticated(false));
@@ -486,6 +502,41 @@ export default function Home() {
     if (!response.ok) return;
     const result = (await response.json()) as { signals?: TrendSignal[] };
     setTrendSignals(result.signals ?? []);
+  }
+
+  /** Loads the durable weekly report archive. */
+  async function loadWeeklyReports(): Promise<void> {
+    const response = await fetch('/api/weekly-reports');
+    if (!response.ok) return;
+    const result = (await response.json()) as { reports?: WeeklyReport[] };
+    setWeeklyReports(result.reports ?? []);
+  }
+
+  /** Generates or refreshes this week's management report. */
+  async function generateWeeklyReport(): Promise<void> {
+    setReportGenerating(true);
+    setReportMessage('正在汇总本周候选、评分与行动建议…');
+    try {
+      const response = await fetch('/api/weekly-reports', { method: 'POST' });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? '周报生成失败');
+      await loadWeeklyReports();
+      setReportMessage('本周报告已生成并保存');
+    } catch (error) {
+      setReportMessage(error instanceof Error ? error.message : '周报生成失败');
+    } finally {
+      setReportGenerating(false);
+    }
+  }
+
+  /** Downloads one archived report without regenerating its contents. */
+  function downloadSavedReport(report: WeeklyReport): void {
+    const blob = new Blob([report.markdown], { type: 'text/markdown;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `TrendPilot-选品周报-${report.weekStart}.md`;
+    link.click();
+    URL.revokeObjectURL(link.href);
   }
 
   /** Promotes one reviewed signal into an editable observation candidate. */
@@ -1289,12 +1340,11 @@ export default function Home() {
               <>
                 <button
                   className="primary-button"
-                  onClick={() => {
-                    setReportMessage('');
-                    setShowReport(true);
-                  }}
+                  disabled={reportGenerating}
+                  onClick={() => void generateWeeklyReport()}
                 >
-                  <FileOutput size={16} /> 生成本周决策报告
+                  <FileOutput size={16} />
+                  {reportGenerating ? '生成中…' : '生成并保存本周周报'}
                 </button>
                 <span>{analysis.highPotential} 个高潜候选等待推进</span>
               </>
@@ -2103,6 +2153,35 @@ export default function Home() {
                       </article>
                     ))}
                   </div>
+                </article>
+                <article className="panel weekly-center">
+                  <div className="panel-head">
+                    <div>
+                      <span className="eyebrow">自动周报中心</span>
+                      <h2>报告历史</h2>
+                    </div>
+                    <span className="source-summary">{weeklyReports.length} 期已保存</span>
+                  </div>
+                  {weeklyReports.length === 0 ? (
+                    <p className="weekly-empty">生成本周周报后，历史版本会保存在这里。</p>
+                  ) : (
+                    <div className="weekly-list">
+                      {weeklyReports.map((report) => (
+                        <article key={report.id}>
+                          <div>
+                            <strong>{report.title}</strong>
+                            <span>更新于 {new Date(report.updatedAt).toLocaleString('zh-CN')}</span>
+                          </div>
+                          <b>{report.highPotentialCount} 个推进</b>
+                          <span>{report.trackedCount} 个追踪</span>
+                          <button onClick={() => downloadSavedReport(report)}>
+                            <Download size={14} /> 下载
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                  {reportMessage && <p className="source-action-message">{reportMessage}</p>}
                 </article>
               </>
             )}

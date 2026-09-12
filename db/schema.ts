@@ -138,3 +138,24 @@ export const trendSignals = sqliteTable(
     index('idx_trend_signals_created_at').on(table.createdAt),
   ],
 );
+
+export const weeklyReports = sqliteTable(
+  'weekly_reports',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    weekStart: text('week_start').notNull(),
+    title: text('title').notNull(),
+    markdown: text('markdown').notNull(),
+    trackedCount: integer('tracked_count').notNull().default(0),
+    highPotentialCount: integer('high_potential_count').notNull().default(0),
+    watchCount: integer('watch_count').notNull().default(0),
+    alertCount: integer('alert_count').notNull().default(0),
+    status: text('status').notNull().default('ready'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_weekly_reports_week_start').on(table.weekStart),
+    index('idx_weekly_reports_created_at').on(table.createdAt),
+  ],
+);
