@@ -693,6 +693,33 @@ button {
   font-size: 10px;
   padding-top: 6px;
 }
+.trend-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.period-switch {
+  display: flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f6f5f8;
+}
+.period-switch button {
+  height: 25px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #85818e;
+  font-size: 10px;
+}
+.period-switch .period-active {
+  background: #fff;
+  color: #5f58d3;
+  font-weight: 800;
+  box-shadow: 0 1px 4px rgba(47, 42, 78, 0.1);
+}
 .legend span {
   display: flex;
   align-items: center;
@@ -1569,6 +1596,11 @@ tbody tr:hover,
   }
   .trend-summary {
     grid-template-columns: 1fr 1fr;
+  }
+  .trend-controls {
+    width: 100%;
+    margin-top: 10px;
+    justify-content: space-between;
   }
   .report-kpis {
     grid-template-columns: 1fr 1fr;

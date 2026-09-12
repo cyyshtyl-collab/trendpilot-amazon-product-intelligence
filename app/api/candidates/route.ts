@@ -82,6 +82,52 @@ function insertStatement(body: CandidatePayload): D1PreparedStatement {
     .bind(...values);
 }
 
+function snapshotByAsin(body: CandidatePayload): D1PreparedStatement | null {
+  const asin = body.asin?.trim().toUpperCase();
+  if (!asin) return null;
+  const capturedDate = new Date().toISOString().slice(0, 10);
+  return db()
+    .prepare(
+      `INSERT INTO candidate_snapshots (candidate_id,captured_date,price,bsr,rating,reviews,review_growth,search_volume,trend,revenue,margin,captured_at) SELECT id,?,?,?,?,?,?,?,?,?,?,? FROM candidates WHERE asin=? AND market=? ON CONFLICT(candidate_id,captured_date) DO UPDATE SET price=excluded.price,bsr=excluded.bsr,rating=excluded.rating,reviews=excluded.reviews,review_growth=excluded.review_growth,search_volume=excluded.search_volume,trend=excluded.trend,revenue=excluded.revenue,margin=excluded.margin,captured_at=excluded.captured_at`,
+    )
+    .bind(
+      capturedDate,
+      body.price ?? '$0',
+      body.bsr ?? 0,
+      body.rating ?? 0,
+      body.reviews ?? 0,
+      body.reviewGrowth ?? 0,
+      body.searchVolume ?? 0,
+      body.trend ?? 0,
+      body.revenue ?? '$0',
+      body.margin ?? 0,
+      new Date().toISOString(),
+      asin,
+      body.market ?? '美国站',
+    );
+}
+
+function snapshotById(id: number, body: CandidatePayload): D1PreparedStatement {
+  return db()
+    .prepare(
+      `INSERT INTO candidate_snapshots (candidate_id,captured_date,price,bsr,rating,reviews,review_growth,search_volume,trend,revenue,margin,captured_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(candidate_id,captured_date) DO UPDATE SET price=excluded.price,bsr=excluded.bsr,rating=excluded.rating,reviews=excluded.reviews,review_growth=excluded.review_growth,search_volume=excluded.search_volume,trend=excluded.trend,revenue=excluded.revenue,margin=excluded.margin,captured_at=excluded.captured_at`,
+    )
+    .bind(
+      id,
+      new Date().toISOString().slice(0, 10),
+      body.price ?? '$0',
+      body.bsr ?? 0,
+      body.rating ?? 0,
+      body.reviews ?? 0,
+      body.reviewGrowth ?? 0,
+      body.searchVolume ?? 0,
+      body.trend ?? 0,
+      body.revenue ?? '$0',
+      body.margin ?? 0,
+      new Date().toISOString(),
+    );
+}
+
 /** Lists all persisted candidates for the authenticated administrator. */
 export async function GET() {
   if (!(await authorized()))
@@ -133,11 +179,19 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     await db().batch(body.map(insertStatement));
+    const snapshots = body
+      .map(snapshotByAsin)
+      .filter((item): item is D1PreparedStatement => item !== null);
+    if (snapshots.length) await db().batch(snapshots);
     return Response.json({ imported: body.length }, { status: 201 });
   }
   const issue = invalid(body);
   if (issue) return Response.json({ error: issue }, { status: 400 });
   const result = await insertStatement(body).run();
+  const snapshot = snapshotByAsin(body);
+  if (snapshot) await snapshot.run();
+  else if (result.meta.last_row_id)
+    await snapshotById(Number(result.meta.last_row_id), body).run();
   return Response.json({ id: result.meta.last_row_id }, { status: 201 });
 }
 
@@ -178,6 +232,7 @@ export async function PUT(request: Request) {
       body.id,
     )
     .run();
+  await snapshotById(body.id, body).run();
   return Response.json({ updated: true });
 }
 

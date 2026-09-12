@@ -56,3 +56,29 @@ export const analysisRuns = sqliteTable(
   },
   (table) => [index('idx_analysis_runs_created_at').on(table.createdAt)],
 );
+
+export const candidateSnapshots = sqliteTable(
+  'candidate_snapshots',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    candidateId: integer('candidate_id').notNull(),
+    capturedDate: text('captured_date').notNull(),
+    price: text('price').notNull().default('$0'),
+    bsr: integer('bsr').notNull().default(0),
+    rating: real('rating').notNull().default(0),
+    reviews: integer('reviews').notNull().default(0),
+    reviewGrowth: integer('review_growth').notNull().default(0),
+    searchVolume: integer('search_volume').notNull().default(0),
+    trend: integer('trend').notNull().default(0),
+    revenue: text('revenue').notNull().default('$0'),
+    margin: integer('margin').notNull().default(0),
+    capturedAt: text('captured_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_snapshots_candidate_date').on(
+      table.candidateId,
+      table.capturedDate,
+    ),
+    index('idx_snapshots_captured_date').on(table.capturedDate),
+  ],
+);

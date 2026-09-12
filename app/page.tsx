@@ -76,6 +76,18 @@ type AnalysisRun = {
   errorMessage: string;
   createdAt: string;
 };
+type CandidateSnapshot = {
+  date: string;
+  price: string;
+  bsr: number;
+  rating: number;
+  reviews: number;
+  reviewGrowth: number;
+  searchVolume: number;
+  trend: number;
+  revenue: string;
+  margin: number;
+};
 
 const DEFAULT_CANDIDATES: Candidate[] = [
   {
@@ -249,6 +261,8 @@ export default function Home() {
   });
   const [showRuns, setShowRuns] = useState(false);
   const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>([]);
+  const [historyPeriod, setHistoryPeriod] = useState<7 | 30 | 90>(30);
+  const [snapshots, setSnapshots] = useState<CandidateSnapshot[]>([]);
   const selected =
     candidates.find((item) => item.id === selectedId) ?? candidates[0];
   const categories = useMemo(
@@ -305,6 +319,22 @@ export default function Home() {
         .slice(0, 8),
     [candidates],
   );
+  const hasRealHistory = snapshots.length >= 2;
+  const chartData = useMemo(() => {
+    if (!hasRealHistory) return analysis.trendData;
+    const firstSearch =
+      snapshots.find((item) => item.searchVolume > 0)?.searchVolume || 1;
+    const firstReviews =
+      snapshots.find((item) => item.reviews > 0)?.reviews || 1;
+    return snapshots.map((item) => ({
+      month: new Date(`${item.date}T00:00:00`).toLocaleDateString('zh-CN', {
+        month: 'numeric',
+        day: 'numeric',
+      }),
+      demand: Math.round((item.searchVolume / firstSearch) * 100),
+      social: Math.round((item.reviews / firstReviews) * 100),
+    }));
+  }, [analysis.trendData, hasRealHistory, snapshots]);
   const reportMarkdown = useMemo(() => {
     const rows = reportCandidates
       .map(
@@ -341,6 +371,22 @@ export default function Home() {
     const result = (await response.json()) as { runs?: AnalysisRun[] };
     setAnalysisRuns(result.runs ?? []);
   }
+
+  /** Loads the selected product's recorded marketplace snapshots. */
+  async function loadSnapshots(): Promise<void> {
+    const response = await fetch(
+      `/api/snapshots?candidateId=${selectedId}&days=${historyPeriod}`,
+    );
+    if (!response.ok) return;
+    const result = (await response.json()) as {
+      snapshots?: CandidateSnapshot[];
+    };
+    setSnapshots(result.snapshots ?? []);
+  }
+
+  useEffect(() => {
+    if (isAuthenticated && selectedId) void loadSnapshots();
+  }, [historyPeriod, isAuthenticated, selectedId]);
 
   useEffect(() => {
     const context = (
@@ -971,23 +1017,40 @@ export default function Home() {
               <div className="panel-head">
                 <div>
                   <span className="eyebrow">市场信号</span>
-                  <h2>热度正在形成交叉验证</h2>
+                  <h2>
+                    {hasRealHistory ? '真实指标变化趋势' : '热度预测参考'}
+                  </h2>
                 </div>
-                <div className="legend">
-                  <span>
-                    <i className="dot-indigo" />
-                    搜索需求
-                  </span>
-                  <span>
-                    <i className="dot-mint" />
-                    社媒热度
-                  </span>
+                <div className="trend-controls">
+                  <div className="period-switch" aria-label="趋势周期">
+                    {([7, 30, 90] as const).map((days) => (
+                      <button
+                        key={days}
+                        className={
+                          historyPeriod === days ? 'period-active' : ''
+                        }
+                        onClick={() => setHistoryPeriod(days)}
+                      >
+                        {days}天
+                      </button>
+                    ))}
+                  </div>
+                  <div className="legend">
+                    <span>
+                      <i className="dot-indigo" />
+                      {hasRealHistory ? '搜索量指数' : '搜索需求'}
+                    </span>
+                    <span>
+                      <i className="dot-mint" />
+                      {hasRealHistory ? '评论数指数' : '社媒热度'}
+                    </span>
+                  </div>
                 </div>
               </div>
               <div className="chart-wrap">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
-                    data={analysis.trendData}
+                    data={chartData}
                     margin={{ top: 10, right: 8, left: -24, bottom: 0 }}
                   >
                     <defs>
@@ -1047,8 +1110,12 @@ export default function Home() {
               </div>
               <div className="trend-summary">
                 <div>
-                  <span>当前观察</span>
-                  <strong>{selected.name}</strong>
+                  <span>{hasRealHistory ? '历史快照' : '当前观察'}</span>
+                  <strong>
+                    {hasRealHistory
+                      ? `${snapshots.length} 个数据点`
+                      : selected.name}
+                  </strong>
                 </div>
                 <div>
                   <span>快速升温</span>
