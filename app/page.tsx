@@ -591,8 +591,8 @@ export default function Home() {
       if (!response.ok) throw new Error(result.error ?? '预评分失败');
       await loadCandidates();
       setAnalysisMessage(
-        result.mode === 'openai'
-          ? `已用 ${aiStatus.model ?? 'OpenAI'} 完成 ${result.analyzed ?? 0} 个产品分析`
+        result.mode === 'openai' || result.mode === 'siliconflow'
+          ? `已用 ${aiStatus.provider} · ${aiStatus.model ?? '已配置模型'} 完成 ${result.analyzed ?? 0} 个产品分析`
           : `已完成 ${result.analyzed ?? 0} 个产品的智能预评分${result.fallbackCount ? `，${result.fallbackCount} 个已安全回退` : ''}`,
       );
     } catch (error) {

@@ -25,6 +25,9 @@ type OpenAIResponse = {
     content?: Array<{ type?: string; text?: string }>;
   }>;
 };
+type SiliconFlowResponse = {
+  choices?: Array<{ message?: { content?: string } }>;
+};
 
 async function authorized(): Promise<boolean> {
   const jar = await cookies();
@@ -39,12 +42,122 @@ function clampScore(value: number): number {
   return Math.min(5, Math.max(1, value));
 }
 
-function runtimeConfig(): { apiKey?: string; model?: string } {
+function runtimeConfig(): {
+  provider: 'openai' | 'siliconflow';
+  apiKey?: string;
+  model?: string;
+} {
   const runtime = env as unknown as {
+    AI_PROVIDER?: string;
+    AI_MODEL?: string;
     OPENAI_API_KEY?: string;
-    OPENAI_MODEL?: string;
+    SILICONFLOW_API_KEY?: string;
   };
-  return { apiKey: runtime.OPENAI_API_KEY, model: runtime.OPENAI_MODEL };
+  const provider =
+    runtime.AI_PROVIDER === 'siliconflow' ? 'siliconflow' : 'openai';
+  return {
+    provider,
+    apiKey:
+      provider === 'siliconflow'
+        ? runtime.SILICONFLOW_API_KEY
+        : runtime.OPENAI_API_KEY,
+    model: runtime.AI_MODEL,
+  };
+}
+
+/** Requests one structured result from SiliconFlow's compatible chat API. */
+async function analyzeWithSiliconFlow(
+  candidate: CandidateRow,
+): Promise<Analysis> {
+  const { apiKey, model } = runtimeConfig();
+  if (!apiKey || !model) throw new Error('硅基流动未配置');
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      scores: {
+        type: 'array',
+        minItems: 5,
+        maxItems: 5,
+        items: { type: 'integer', minimum: 1, maximum: 5 },
+      },
+      score: { type: 'integer', minimum: 5, maximum: 25 },
+      verdict: { type: 'string', enum: ['通过', '观察', '淘汰'] },
+      signals: {
+        type: 'array',
+        minItems: 2,
+        maxItems: 5,
+        items: { type: 'string' },
+      },
+      pains: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 5,
+        items: { type: 'string' },
+      },
+      sellingPoint: { type: 'string' },
+    },
+    required: [
+      'scores',
+      'score',
+      'verdict',
+      'signals',
+      'pains',
+      'sellingPoint',
+    ],
+  };
+  const response = await fetch(
+    'https://api.siliconflow.cn/v1/chat/completions',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content:
+              '你是亚马逊选品分析师。只能依据输入数据评分，不得编造评论证据。五项评分依次为需求真实性、竞争可切入度、差异化空间、供应链可控性、双线协同性，每项1到5分。Selling Point 必须是克制、合规的英文短句。请严格输出指定 JSON。',
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              product: candidate.name,
+              category: candidate.category,
+              trendPercent: candidate.trend,
+              reviewCount: candidate.reviews,
+              marginPercent: candidate.margin,
+              negativeReviews: candidate.review_text.slice(0, 12000),
+            }),
+          },
+        ],
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'amazon_product_analysis',
+            strict: true,
+            schema,
+          },
+        },
+        temperature: 0.2,
+      }),
+    },
+  );
+  if (!response.ok) throw new Error(`硅基流动请求失败：${response.status}`);
+  const data = (await response.json()) as SiliconFlowResponse;
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) throw new Error('硅基流动没有返回结构化结果');
+  const parsed = JSON.parse(content) as Analysis;
+  if (!Array.isArray(parsed.scores) || parsed.scores.length !== 5)
+    throw new Error('模型评分格式无效');
+  parsed.scores = parsed.scores.map(clampScore) as Analysis['scores'];
+  parsed.score = parsed.scores.reduce((sum, value) => sum + value, 0);
+  parsed.verdict =
+    parsed.score >= 18 ? '通过' : parsed.score >= 15 ? '观察' : '淘汰';
+  return parsed;
 }
 
 /** Requests one evidence-grounded scoring result from the configured OpenAI model. */
@@ -249,7 +362,8 @@ export async function POST(request: Request) {
   const result = await query.all<CandidateRow>();
   if (!result.results.length)
     return Response.json({ error: '没有可评分的候选产品' }, { status: 400 });
-  const configured = Boolean(runtimeConfig().apiKey && runtimeConfig().model);
+  const config = runtimeConfig();
+  const configured = Boolean(config.apiKey && config.model);
   let fallbackCount = 0;
   const outputs = await Promise.all(
     result.results.map(async (candidate, index) => {
@@ -258,7 +372,9 @@ export async function POST(request: Request) {
         return analyze(candidate);
       }
       try {
-        return await analyzeWithOpenAI(candidate);
+        return config.provider === 'siliconflow'
+          ? await analyzeWithSiliconFlow(candidate)
+          : await analyzeWithOpenAI(candidate);
       } catch {
         fallbackCount += 1;
         return analyze(candidate);
@@ -286,7 +402,9 @@ export async function POST(request: Request) {
   return Response.json({
     analyzed: statements.length,
     mode:
-      configured && fallbackCount === 0 ? 'openai' : 'explainable-pre-score',
+      configured && fallbackCount === 0
+        ? config.provider
+        : 'explainable-pre-score',
     fallbackCount,
   });
 }
