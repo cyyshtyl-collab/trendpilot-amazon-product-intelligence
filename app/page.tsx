@@ -979,48 +979,6 @@ export default function Home() {
               )}
             </button>
             <button
-              className="import-button"
-              onClick={() => {
-                setShowRuns(true);
-                void loadAnalysisRuns();
-              }}
-            >
-              <History size={17} />
-              运行记录
-            </button>
-            <button
-              className="report-button"
-              onClick={() => {
-                setReportMessage('');
-                setShowReport(true);
-              }}
-            >
-              <FileOutput size={17} />
-              生成周报
-            </button>
-            <button
-              className="import-button"
-              disabled={analysisLoading}
-              onClick={() => void handleAnalyze()}
-            >
-              <Sparkles size={17} />
-              {analysisLoading
-                ? '评分中…'
-                : aiStatus.configured
-                  ? '批量 AI 分析'
-                  : '批量预评分'}
-            </button>
-            <button
-              className="import-button"
-              onClick={() => {
-                setImportMessage('');
-                setShowImport(true);
-              }}
-            >
-              <Upload size={17} />
-              批量导入
-            </button>
-            <button
               className="primary-button"
               onClick={() => setEditorMode('new')}
             >
@@ -1108,6 +1066,15 @@ export default function Home() {
                   <Sparkles size={16} />
                   {analysisLoading ? '评分中…' : '运行批量 AI 评分'}
                 </button>
+                <button
+                  className="secondary-stage-action"
+                  onClick={() => {
+                    setShowRuns(true);
+                    void loadAnalysisRuns();
+                  }}
+                >
+                  <History size={16} /> 运行记录
+                </button>
                 <span>
                   当前使用 {aiStatus.model ?? '规则评分'} · 五维评分卡
                 </span>
@@ -1127,18 +1094,6 @@ export default function Home() {
                 <span>{analysis.highPotential} 个高潜候选等待推进</span>
               </>
             )}
-          </div>
-          <div className="stage-progress" aria-label="四阶段完成情况">
-            {stages.map((stage, index) => (
-              <button
-                key={stage.number}
-                className={index <= activeStage ? 'complete' : ''}
-                onClick={() => setActiveStage(index)}
-              >
-                <i />
-                <span>{stage.name}</span>
-              </button>
-            ))}
           </div>
         </section>
         {analysisMessage && (
