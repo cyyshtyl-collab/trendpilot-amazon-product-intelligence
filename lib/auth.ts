@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 
 export const SESSION_COOKIE = 'trendpilot_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 8;
-const PASSWORD_ITERATIONS = 210_000;
+const PASSWORD_ITERATIONS = 100_000;
 
 export type UserIdentity = { username: string; role: 'admin' | 'member' };
 
