@@ -27,11 +27,6 @@ function encode(bytes: ArrayBuffer): string {
     .replace(/=+$/g, '');
 }
 
-function decodeHex(value: string): Uint8Array | null {
-  if (!/^[a-f0-9]+$/i.test(value) || value.length % 2 !== 0) return null;
-  return new Uint8Array(value.match(/.{2}/g)?.map((byte) => Number.parseInt(byte, 16)) ?? []);
-}
-
 async function signature(payload: string, secret: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw',
@@ -59,8 +54,7 @@ function validAdminCredentials(username: string, password: string): boolean {
 }
 
 async function verifyPassword(password: string, saltHex: string, hashHex: string): Promise<boolean> {
-  const salt = decodeHex(saltHex);
-  if (!salt || !/^[a-f0-9]{64}$/i.test(hashHex)) return false;
+  if (!/^[a-f0-9]{32}$/i.test(saltHex) || !/^[a-f0-9]{64}$/i.test(hashHex)) return false;
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(password),
@@ -69,7 +63,12 @@ async function verifyPassword(password: string, saltHex: string, hashHex: string
     ['deriveBits'],
   );
   const derived = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', hash: 'SHA-256', salt, iterations: PASSWORD_ITERATIONS },
+    {
+      name: 'PBKDF2',
+      hash: 'SHA-256',
+      salt: new TextEncoder().encode(saltHex),
+      iterations: PASSWORD_ITERATIONS,
+    },
     key,
     256,
   );
