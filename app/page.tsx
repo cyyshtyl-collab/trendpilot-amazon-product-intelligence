@@ -1137,7 +1137,7 @@ export default function Home() {
             </button>
           </form>
           <p className="login-note">
-            当前为内部演示认证，正式上线前将升级为服务端账号系统。
+          仅限内部成员使用；账号由管理员创建并可随时停用。
           </p>
         </section>
         <aside className="login-visual" aria-hidden="true">

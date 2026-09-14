@@ -159,3 +159,18 @@ export const weeklyReports = sqliteTable(
     index('idx_weekly_reports_created_at').on(table.createdAt),
   ],
 );
+
+export const appUsers = sqliteTable(
+  'app_users',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    username: text('username').notNull(),
+    passwordHash: text('password_hash').notNull(),
+    passwordSalt: text('password_salt').notNull(),
+    role: text('role').notNull().default('member'),
+    status: text('status').notNull().default('active'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [uniqueIndex('idx_app_users_username').on(table.username)],
+);

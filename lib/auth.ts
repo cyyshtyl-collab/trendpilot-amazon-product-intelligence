@@ -3,6 +3,9 @@ import { cookies } from 'next/headers';
 
 export const SESSION_COOKIE = 'trendpilot_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 8;
+const PASSWORD_ITERATIONS = 210_000;
+
+export type UserIdentity = { username: string; role: 'admin' | 'member' };
 
 function config(): { username?: string; password?: string; secret?: string } {
   const runtime = env as unknown as {
@@ -22,6 +25,11 @@ function encode(bytes: ArrayBuffer): string {
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/g, '');
+}
+
+function decodeHex(value: string): Uint8Array | null {
+  if (!/^[a-f0-9]+$/i.test(value) || value.length % 2 !== 0) return null;
+  return new Uint8Array(value.match(/.{2}/g)?.map((byte) => Number.parseInt(byte, 16)) ?? []);
 }
 
 async function signature(payload: string, secret: string): Promise<string> {
@@ -44,18 +52,58 @@ function safeEqual(left: string, right: string): boolean {
 }
 
 /** Validates credentials stored only in the hosted runtime environment. */
-export function validCredentials(username: string, password: string): boolean {
+function validAdminCredentials(username: string, password: string): boolean {
   const current = config();
   if (!current.username || !current.password) return false;
   return safeEqual(username, current.username) && safeEqual(password, current.password);
 }
 
+async function verifyPassword(password: string, saltHex: string, hashHex: string): Promise<boolean> {
+  const salt = decodeHex(saltHex);
+  if (!salt || !/^[a-f0-9]{64}$/i.test(hashHex)) return false;
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  );
+  const derived = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt, iterations: PASSWORD_ITERATIONS },
+    key,
+    256,
+  );
+  return safeEqual(
+    [...new Uint8Array(derived)].map((byte) => byte.toString(16).padStart(2, '0')).join(''),
+    hashHex.toLowerCase(),
+  );
+}
+
+/** Authenticates either the environment administrator or an active internal member. */
+export async function authenticateUser(
+  database: D1Database,
+  username: string,
+  password: string,
+): Promise<UserIdentity | null> {
+  const normalized = username.trim().toLowerCase();
+  if (!/^[a-z0-9_-]{3,32}$/.test(normalized) || password.length > 128) return null;
+  if (validAdminCredentials(normalized, password)) return { username: normalized, role: 'admin' };
+  const user = await database
+    .prepare(
+      "SELECT username,password_hash,password_salt,role FROM app_users WHERE username=? AND status='active' LIMIT 1",
+    )
+    .bind(normalized)
+    .first<{ username: string; password_hash: string; password_salt: string; role: string }>();
+  if (!user || !(await verifyPassword(password, user.password_salt, user.password_hash))) return null;
+  return { username: user.username, role: user.role === 'admin' ? 'admin' : 'member' };
+}
+
 /** Creates a signed, time-limited administrator session token. */
-export async function createSessionToken(): Promise<string> {
+export async function createSessionToken(identity: UserIdentity): Promise<string> {
   const { secret } = config();
   if (!secret || secret.length < 32) throw new Error('会话密钥未配置');
   const expiresAt = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
-  const payload = `admin.${expiresAt}`;
+  const payload = `${identity.role}.${identity.username}.${expiresAt}`;
   return `${payload}.${await signature(payload, secret)}`;
 }
 
@@ -65,12 +113,12 @@ export async function authorized(): Promise<boolean> {
   if (!secret || secret.length < 32) return false;
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return false;
-  const [role, expiry, suppliedSignature] = token.split('.');
-  if (role !== 'admin' || !expiry || !suppliedSignature) return false;
+  const [role, username, expiry, suppliedSignature] = token.split('.');
+  if (!['admin', 'member'].includes(role) || !username || !expiry || !suppliedSignature) return false;
   const expiresAt = Number(expiry);
   if (!Number.isInteger(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000))
     return false;
-  const expected = await signature(`${role}.${expiry}`, secret);
+  const expected = await signature(`${role}.${username}.${expiry}`, secret);
   return safeEqual(suppliedSignature, expected);
 }
 
