@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/runtime';
 import { authorized } from '@/lib/auth';
 
 /** Lists recent AI analysis executions without exposing credentials or prompts. */

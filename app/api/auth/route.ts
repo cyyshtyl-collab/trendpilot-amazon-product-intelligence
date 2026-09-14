@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/runtime';
 import {
   authenticateUser,
   authorized,

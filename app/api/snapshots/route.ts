@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/runtime';
 import { authorized } from '@/lib/auth';
 
 /** Lists one candidate's numeric history for a bounded reporting period. */

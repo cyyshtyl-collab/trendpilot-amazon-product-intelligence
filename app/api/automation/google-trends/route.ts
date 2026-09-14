@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/runtime';
 import {
   fetchGoogleTrends,
   normalizeTrendGeo,
@@ -9,8 +9,18 @@ function db(): D1Database {
   return (env as unknown as { DB: D1Database }).DB;
 }
 
-/** Runs the public, idempotent daily trend collection used by the scheduler. */
+function automationAuthorized(request: Request): boolean {
+  const secret = (env as unknown as { AUTOMATION_SECRET?: string }).AUTOMATION_SECRET;
+  if (!secret || secret.length < 32) return false;
+  const supplied = request.headers.get('authorization');
+  return supplied === `Bearer ${secret}`;
+}
+
+/** Runs the protected, idempotent daily trend collection used by the scheduler. */
 export async function GET(request: Request): Promise<Response> {
+  if (!automationAuthorized(request)) {
+    return Response.json({ error: '未授权' }, { status: 401 });
+  }
   const geo = normalizeTrendGeo(new URL(request.url).searchParams.get('geo') ?? 'US');
   const today = new Date().toISOString().slice(0, 10);
   const existing = await db()

@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/runtime';
 import { cookies } from 'next/headers';
 
 export const SESSION_COOKIE = 'trendpilot_session';

@@ -473,8 +473,10 @@ export default function Home() {
   }, [analysis, reportCandidates]);
   useEffect(() => {
     void fetch('/api/auth')
-      .then((response) => response.json())
-      .then((result: { authenticated?: boolean }) => {
+      .then(
+        (response) => response.json() as Promise<{ authenticated?: boolean }>,
+      )
+      .then((result) => {
         setIsAuthenticated(result.authenticated === true);
         if (result.authenticated) {
           void loadCandidates();
