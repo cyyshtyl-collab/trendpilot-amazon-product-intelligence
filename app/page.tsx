@@ -391,12 +391,17 @@ export default function Home() {
   const [alertNotes, setAlertNotes] = useState<Record<string, string>>({});
   const selected =
     candidates.find((item) => item.id === selectedId) ?? candidates[0];
+  const isOfficialTrendCandidate = selected?.signals.some((signal) =>
+    signal.includes('Amazon 官方 2026'),
+  );
   const selectedDataQuality =
     selected?.asin && selected?.price !== '$0' && selected?.rating
       ? '真实数据'
       : selected?.asin || selected?.price !== '$0' || selected?.searchVolume
         ? '部分数据'
-        : '示例数据';
+        : isOfficialTrendCandidate
+          ? '公开趋势'
+          : '示例数据';
   const categories = useMemo(
     () => ['全部类目', ...new Set(candidates.map((item) => item.category))],
     [candidates],
