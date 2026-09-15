@@ -83,6 +83,11 @@ docker exec -i trendpilot-db \
 
 生产 cron 位于 `/etc/cron.d/trendpilot`：
 
+- 每天 09:00：Google Trends 公开趋势采集。
+- 每天 09:30：ASIN 数据质量巡检（新鲜度、价格、评分、BSR）。
+- 每 6 小时：商品 CSV Feed（未配置地址时安全跳过）。
+- 每天 03:00：PostgreSQL 备份。
+
 | 时间（Asia/Shanghai） | 任务 |
 | --- | --- |
 | 每天 03:00 | PostgreSQL 备份 |
@@ -124,4 +129,3 @@ tail -n 100 /var/log/trendpilot-automation.log
 - 删除临时 SSH 公钥，轮换曾在聊天中出现过的密码和 API Key。
 - 为登录增加速率限制，建立只读/编辑/管理员权限。
 - 设置云监控：CPU、内存、磁盘、容器退出和 5xx 告警。
-

@@ -2073,7 +2073,11 @@ export default function Home() {
                     ) : (
                       <div className="source-runs-list">
                         {sourceRuns.slice(0, 5).map((run) => (
-                          <div key={run.id} className="source-run-row">
+                          <div
+                            key={run.id}
+                            className="source-run-row"
+                            title={run.errorMessage || undefined}
+                          >
                             <span
                               className={
                                 run.status === 'success'
