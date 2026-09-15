@@ -30,7 +30,7 @@ TrendPilot 将多渠道市场信号统一为可复核的亚马逊选品决策。
 
 运行容器：
 
-- `trendpilot-app:ecs-20260915.6`
+- `trendpilot-app:ecs-20260915.7`
 - `postgres:16-alpine`
 
 ## 3. 四阶段完成度
