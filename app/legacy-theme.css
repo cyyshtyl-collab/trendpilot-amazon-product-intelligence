@@ -650,8 +650,12 @@ button {
   width: 8px;
 }
 
-.run-success { background: #27b889; }
-.run-failed { background: #e15b64; }
+.run-success {
+  background: #27b889;
+}
+.run-failed {
+  background: #e15b64;
+}
 
 .signal-pool {
   border-top: 1px solid #eaecf4;
@@ -741,9 +745,18 @@ button {
   white-space: normal;
 }
 
-.advice-推荐 { background: #e8f8f2; color: #177a59; }
-.advice-观察 { background: #fff4dd; color: #946316; }
-.advice-忽略 { background: #f0f1f5; color: #707584; }
+.advice-推荐 {
+  background: #e8f8f2;
+  color: #177a59;
+}
+.advice-观察 {
+  background: #fff4dd;
+  color: #946316;
+}
+.advice-忽略 {
+  background: #f0f1f5;
+  color: #707584;
+}
 
 .signal-card em {
   background: #e8f8f2;
@@ -1051,9 +1064,18 @@ button {
   font-weight: 700;
 }
 
-.weekly-center { margin-top: 18px; }
-.weekly-empty { color: var(--muted); margin: 16px 0 0; }
-.weekly-list { display: grid; gap: 9px; margin-top: 14px; }
+.weekly-center {
+  margin-top: 18px;
+}
+.weekly-empty {
+  color: var(--muted);
+  margin: 16px 0 0;
+}
+.weekly-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+}
 .weekly-list > article {
   align-items: center;
   background: #fafafe;
@@ -1064,10 +1086,19 @@ button {
   grid-template-columns: minmax(240px, 1fr) auto auto auto;
   padding: 13px 15px;
 }
-.weekly-list > article > div { display: grid; gap: 4px; }
+.weekly-list > article > div {
+  display: grid;
+  gap: 4px;
+}
 .weekly-list > article > div span,
-.weekly-list > article > span { color: var(--muted); font-size: 0.8rem; }
-.weekly-list > article > b { color: #19845f; font-size: 0.82rem; }
+.weekly-list > article > span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.weekly-list > article > b {
+  color: #19845f;
+  font-size: 0.82rem;
+}
 .weekly-list button {
   align-items: center;
   background: #eeeafe;
@@ -1082,8 +1113,12 @@ button {
 }
 
 @media (max-width: 760px) {
-  .weekly-list > article { grid-template-columns: 1fr 1fr; }
-  .weekly-list > article > div { grid-column: 1 / -1; }
+  .weekly-list > article {
+    grid-template-columns: 1fr 1fr;
+  }
+  .weekly-list > article > div {
+    grid-column: 1 / -1;
+  }
 }
 .search {
   height: 40px;
@@ -1932,13 +1967,23 @@ tbody tr:hover,
   padding: 4px 8px;
 }
 
-.quality-真实数据 { background: #e7f8f1; color: #177b59; }
-.quality-部分数据 { background: #fff3dd; color: #956515; }
-.quality-示例数据 { background: #f0f1f5; color: #707584; }
+.quality-真实数据 {
+  background: #e7f8f1;
+  color: #177b59;
+}
+.quality-部分数据 {
+  background: #fff3dd;
+  color: #956515;
+}
+.quality-示例数据 {
+  background: #f0f1f5;
+  color: #707584;
+}
 .import-modal {
   width: min(520px, calc(100vw - 32px));
 }
 .upload-zone {
+  position: relative;
   margin-top: 22px;
   min-height: 180px;
   border: 1.5px dashed #bdb8db;
@@ -1961,9 +2006,11 @@ tbody tr:hover,
 }
 .upload-zone input {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   opacity: 0;
+  cursor: pointer;
 }
 .field-guide {
   margin-top: 16px;
