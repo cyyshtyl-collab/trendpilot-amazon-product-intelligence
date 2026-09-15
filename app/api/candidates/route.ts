@@ -28,6 +28,18 @@ type CandidatePayload = {
 
 type CandidateView = CandidatePayload & { id: number };
 
+const DATA_ORIGINS = new Set([
+  'manual',
+  'amazon_official',
+  'category_expansion',
+  'automated_feed',
+]);
+
+/** Returns a supported provenance value and falls back safely for older clients. */
+function normalizeDataOrigin(value?: string): string {
+  return value && DATA_ORIGINS.has(value) ? value : 'manual';
+}
+
 function completeness(candidate: CandidateView): number {
   return [
     Boolean(candidate.asin),
@@ -77,11 +89,12 @@ function invalid(body: CandidatePayload): string | null {
 function insertStatement(body: CandidatePayload): D1PreparedStatement {
   const asin = body.asin?.trim().toUpperCase() || null;
   const columns =
-    'name,asin,category,market,score,verdict,trend,revenue,reviews,margin,price,bsr,rating,search_volume,review_growth,review_text,scores_json,signals_json,pains_json,selling_point,updated_at';
+    'name,asin,category,data_origin,market,score,verdict,trend,revenue,reviews,margin,price,bsr,rating,search_volume,review_growth,review_text,scores_json,signals_json,pains_json,selling_point,updated_at';
   const values = [
     body.name!.trim(),
     asin,
     body.category ?? '未分类',
+    normalizeDataOrigin(body.dataOrigin),
     body.market ?? '美国站',
     body.score ?? 0,
     body.verdict ?? '淘汰',
@@ -104,7 +117,7 @@ function insertStatement(body: CandidatePayload): D1PreparedStatement {
   if (asin) {
     return db()
       .prepare(
-        `INSERT INTO candidates (${columns}) VALUES (${values.map(() => '?').join(',')}) ON CONFLICT(asin,market) DO UPDATE SET name=excluded.name,category=excluded.category,score=excluded.score,verdict=excluded.verdict,trend=excluded.trend,revenue=excluded.revenue,reviews=excluded.reviews,margin=excluded.margin,price=excluded.price,bsr=excluded.bsr,rating=excluded.rating,search_volume=excluded.search_volume,review_growth=excluded.review_growth,review_text=excluded.review_text,scores_json=excluded.scores_json,signals_json=excluded.signals_json,pains_json=excluded.pains_json,selling_point=excluded.selling_point,updated_at=excluded.updated_at`,
+        `INSERT INTO candidates (${columns}) VALUES (${values.map(() => '?').join(',')}) ON CONFLICT(asin,market) DO UPDATE SET name=excluded.name,category=excluded.category,data_origin=excluded.data_origin,score=excluded.score,verdict=excluded.verdict,trend=excluded.trend,revenue=excluded.revenue,reviews=excluded.reviews,margin=excluded.margin,price=excluded.price,bsr=excluded.bsr,rating=excluded.rating,search_volume=excluded.search_volume,review_growth=excluded.review_growth,review_text=excluded.review_text,scores_json=excluded.scores_json,signals_json=excluded.signals_json,pains_json=excluded.pains_json,selling_point=excluded.selling_point,updated_at=excluded.updated_at`,
       )
       .bind(...values);
   }

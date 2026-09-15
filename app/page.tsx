@@ -339,6 +339,35 @@ function parseCsvRow(row: string): string[] {
   return cells;
 }
 
+/** Converts compact marketplace counts such as 44.1K or 2M into integers. */
+function parseMarketplaceCount(value: string): number {
+  const normalized = value.replace(/[(),]/g, '').trim();
+  const amount = Number.parseFloat(normalized) || 0;
+  if (/m/i.test(normalized)) return Math.round(amount * 1_000_000);
+  if (/k/i.test(normalized)) return Math.round(amount * 1_000);
+  return Math.round(amount);
+}
+
+/** Extracts the first decimal number from marketplace labels and currency text. */
+function parseMarketplaceNumber(value: string): number {
+  return Number.parseFloat(value.match(/\d+(?:\.\d+)?/)?.[0] ?? '0') || 0;
+}
+
+/** Maps supported collection-source identifiers to persisted provenance values. */
+function dataOriginForSource(
+  source: string,
+): 'automated_feed' | 'manual' {
+  return source === 'octoparse' ? 'automated_feed' : 'manual';
+}
+
+const OCTOPARSE_CATEGORY_BY_KEYWORD: Record<string, string> = {
+  'travel organizer': '旅行配件',
+  'slow feeder dog bowl': '宠物用品',
+  'car seat gap organizer': '汽车用品',
+  'magnetic phone mount': '手机配件',
+  'under cabinet lights': '照明用品',
+};
+
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -355,6 +384,7 @@ export default function Home() {
   const [showImport, setShowImport] = useState(false);
   const [selectedSource, setSelectedSource] = useState('sellersprite');
   const [importCategory, setImportCategory] = useState('未分类');
+  const [pastedCsv, setPastedCsv] = useState('');
   const [sourceSyncing, setSourceSyncing] = useState(false);
   const [sourceMessage, setSourceMessage] = useState('');
   const [sourceRuns, setSourceRuns] = useState<SourceRun[]>([]);
@@ -855,15 +885,11 @@ export default function Home() {
     setSelectedId(remaining[0].id);
   }
 
-  /** Parses a SellerSprite-style CSV and persists its normalized candidate rows. */
-  async function handleCsvImport(
-    event: React.ChangeEvent<HTMLInputElement>,
-  ): Promise<void> {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  /** Parses supported marketplace CSV text and persists normalized candidates in safe batches. */
+  async function importCsvText(csvText: string): Promise<void> {
     setImportMessage('正在读取并校验数据…');
     try {
-      const lines = (await file.text())
+      const lines = csvText
         .replace(/^\uFEFF/, '')
         .split(/\r?\n/)
         .filter((line) => line.trim());
@@ -875,14 +901,15 @@ export default function Home() {
         name: find(['产品名称', 'name', 'product_name']),
         asin: find(['asin', '产品asin', '产品标识']),
         category: find(['类目', 'category']),
+        keyword: find(['keyword', '关键词']),
         market: find(['站点', 'market']),
         trend: find(['趋势增幅', 'trend']),
         revenue: find(['月销售额', 'revenue']),
-        reviews: find(['评论数', 'reviews']),
+        reviews: find(['评论数', 'reviews', 'rating_count']),
         margin: find(['毛利率', 'margin']),
-        price: find(['价格', 'price']),
+        price: find(['价格', 'price', 'current_price']),
         bsr: find(['bsr', '大类排名', '排名']),
-        rating: find(['评分', 'rating']),
+        rating: find(['评分', 'rating', 'stars']),
         searchVolume: find(['关键词搜索量', '搜索量', 'search_volume']),
         reviewGrowth: find(['评论增速', 'review_growth']),
         reviewText: find([
@@ -902,7 +929,7 @@ export default function Home() {
       if (column.name < 0) throw new Error('缺少“产品名称”列');
       const read = (cells: string[], index: number, fallback = '') =>
         index >= 0 ? (cells[index] ?? fallback) : fallback;
-      const imported = lines.slice(1, 201).map((line) => {
+      const imported = lines.slice(1, 1001).map((line) => {
         const cells = parseCsvRow(line);
         const scores = column.scores.map((index) =>
           Math.min(5, Math.max(1, Number(read(cells, index, '3')) || 3)),
@@ -911,16 +938,20 @@ export default function Home() {
         return {
           name: read(cells, column.name).trim(),
           asin: read(cells, column.asin).trim().toUpperCase() || undefined,
-          category:
-            read(cells, column.category, importCategory) || importCategory,
+          category: read(cells, column.category) ||
+            OCTOPARSE_CATEGORY_BY_KEYWORD[
+              read(cells, column.keyword).toLowerCase()
+            ] ||
+            importCategory,
+          dataOrigin: dataOriginForSource(selectedSource),
           market: read(cells, column.market, '美国站') || '美国站',
           trend: Number(read(cells, column.trend)) || 0,
           revenue: read(cells, column.revenue, '$0') || '$0',
-          reviews: Number(read(cells, column.reviews)) || 0,
+          reviews: parseMarketplaceCount(read(cells, column.reviews)),
           margin: Number(read(cells, column.margin)) || 0,
           price: read(cells, column.price, '$0') || '$0',
           bsr: Number(read(cells, column.bsr)) || 0,
-          rating: Number(read(cells, column.rating)) || 0,
+          rating: parseMarketplaceNumber(read(cells, column.rating)),
           searchVolume: Number(read(cells, column.searchVolume)) || 0,
           reviewGrowth: Number(read(cells, column.reviewGrowth)) || 0,
           reviewText: read(cells, column.reviewText).slice(0, 20000),
@@ -937,21 +968,44 @@ export default function Home() {
       });
       if (imported.some((item) => !item.name))
         throw new Error('存在产品名称为空的数据行');
-      const response = await fetch('/api/candidates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(imported),
-      });
-      const result = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(result.error ?? '导入失败');
+      for (let index = 0; index < imported.length; index += 200) {
+        const batch = imported.slice(index, index + 200);
+        const response = await fetch('/api/candidates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(batch),
+        });
+        const result = (await response.json()) as { error?: string };
+        if (!response.ok) throw new Error(result.error ?? '导入失败');
+      }
       await loadCandidates();
       void loadAnalysisRuns();
       setImportMessage(`已成功导入 ${imported.length} 条候选产品`);
     } catch (error) {
       setImportMessage(error instanceof Error ? error.message : '导入失败');
+    }
+  }
+
+  /** Reads a selected CSV file and delegates to the shared import pipeline. */
+  async function handleCsvImport(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ): Promise<void> {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      await importCsvText(await file.text());
     } finally {
       event.target.value = '';
     }
+  }
+
+  /** Imports CSV pasted directly from a collector or spreadsheet. */
+  async function handlePastedCsvImport(): Promise<void> {
+    if (!pastedCsv.trim()) {
+      setImportMessage('请先粘贴 CSV 内容');
+      return;
+    }
+    await importCsvText(pastedCsv);
   }
 
   /** Downloads the canonical CSV header and one example row. */
@@ -2679,6 +2733,26 @@ export default function Home() {
                 onChange={handleCsvImport}
               />
             </label>
+            <div className="paste-import-zone">
+              <div>
+                <strong>或直接粘贴 CSV</strong>
+                <span>适合 Octoparse、卖家精灵及表格复制结果</span>
+              </div>
+              <textarea
+                aria-label="粘贴 CSV 内容"
+                value={pastedCsv}
+                onChange={(event) => setPastedCsv(event.target.value)}
+                placeholder="粘贴包含表头的 CSV；一次最多 1,000 行，系统会自动分批导入"
+                rows={7}
+              />
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => void handlePastedCsvImport()}
+              >
+                校验并导入粘贴数据
+              </button>
+            </div>
             <button
               type="button"
               className="template-button"
