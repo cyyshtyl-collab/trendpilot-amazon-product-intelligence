@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS candidates (
   id SERIAL PRIMARY KEY, name TEXT NOT NULL, asin TEXT, category TEXT NOT NULL,
+  data_origin TEXT NOT NULL DEFAULT 'manual',
   market TEXT NOT NULL, score INTEGER NOT NULL, verdict TEXT NOT NULL,
   trend INTEGER NOT NULL DEFAULT 0, revenue TEXT NOT NULL DEFAULT '$0',
   reviews INTEGER NOT NULL DEFAULT 0, margin INTEGER NOT NULL DEFAULT 0,
@@ -12,6 +13,7 @@ CREATE TABLE IF NOT EXISTS candidates (
 CREATE INDEX IF NOT EXISTS idx_candidates_score ON candidates(score);
 CREATE INDEX IF NOT EXISTS idx_candidates_verdict ON candidates(verdict);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_candidates_asin_market ON candidates(asin, market);
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS data_origin TEXT NOT NULL DEFAULT 'manual';
 
 CREATE TABLE IF NOT EXISTS analysis_runs (
   id SERIAL PRIMARY KEY, provider TEXT NOT NULL, model TEXT NOT NULL,
@@ -69,4 +71,3 @@ CREATE TABLE IF NOT EXISTS app_users (
   password_salt TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'member',
   status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
-

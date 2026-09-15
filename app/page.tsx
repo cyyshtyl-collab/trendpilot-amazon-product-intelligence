@@ -43,6 +43,7 @@ type Candidate = {
   name: string;
   asin?: string;
   category: string;
+  dataOrigin?: 'manual' | 'amazon_official' | 'category_expansion' | 'automated_feed';
   market: string;
   score: number;
   verdict: Verdict;
@@ -347,6 +348,7 @@ export default function Home() {
   const [duplicateCount, setDuplicateCount] = useState(0);
   const [filter, setFilter] = useState<'全部' | Verdict>('全部');
   const [categoryFilter, setCategoryFilter] = useState('全部类目');
+  const [categoryGroupFilter, setCategoryGroupFilter] = useState('全部分组');
   const [sortBy, setSortBy] = useState<'score' | 'trend' | 'margin'>('score');
   const [query, setQuery] = useState('');
   const [editorMode, setEditorMode] = useState<'new' | 'edit' | null>(null);
@@ -391,9 +393,8 @@ export default function Home() {
   const [alertNotes, setAlertNotes] = useState<Record<string, string>>({});
   const selected =
     candidates.find((item) => item.id === selectedId) ?? candidates[0];
-  const isOfficialTrendCandidate = selected?.signals.some((signal) =>
-    signal.includes('Amazon 官方 2026'),
-  );
+  const isOfficialTrendCandidate = selected?.dataOrigin === 'amazon_official';
+  const isCategoryExpansionCandidate = selected?.dataOrigin === 'category_expansion';
   const selectedDataQuality =
     selected?.asin && selected?.price !== '$0' && selected?.rating
       ? '真实数据'
@@ -401,11 +402,31 @@ export default function Home() {
         ? '部分数据'
         : isOfficialTrendCandidate
           ? '公开趋势'
+          : isCategoryExpansionCandidate
+            ? '待市场验证'
           : '示例数据';
   const categories = useMemo(
     () => ['全部类目', ...new Set(candidates.map((item) => item.category))],
     [candidates],
   );
+  const categoryGroups = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of candidates)
+      counts.set(item.category, (counts.get(item.category) ?? 0) + 1);
+    const known = new Set(CATEGORY_GROUPS.flatMap((group) => group.categories));
+    const groups = CATEGORY_GROUPS.map((group) => ({
+      label: group.label,
+      categories: group.categories
+        .map((category) => ({ category, count: counts.get(category) ?? 0 }))
+        .filter((item) => item.count > 0),
+    })).filter((group) => group.categories.length > 0);
+    const other = [...counts]
+      .filter(([category]) => !known.has(category))
+      .map(([category, count]) => ({ category, count }));
+    return other.length
+      ? [...groups, { label: '其他分类', categories: other }]
+      : groups;
+  }, [candidates]);
   const filtered = useMemo(() => {
     const sortValue = (item: Candidate) =>
       sortBy === 'trend'
@@ -417,11 +438,17 @@ export default function Home() {
       .filter(
         (item) =>
           (filter === '全部' || item.verdict === filter) &&
+          (categoryGroupFilter === '全部分组' ||
+            categoryGroups
+              .find((group) => group.label === categoryGroupFilter)
+              ?.categories.some(
+                (category) => category.category === item.category,
+              )) &&
           (categoryFilter === '全部类目' || item.category === categoryFilter) &&
           item.name.toLowerCase().includes(query.trim().toLowerCase()),
       )
       .sort((left, right) => sortValue(right) - sortValue(left));
-  }, [candidates, categoryFilter, filter, query, sortBy]);
+  }, [candidates, categoryFilter, categoryGroupFilter, categoryGroups, filter, query, sortBy]);
   const analysis = useMemo(() => {
     const average = (values: number[]) =>
       values.length
@@ -1405,6 +1432,79 @@ export default function Home() {
             {analysisMessage}
           </div>
         )}
+        {activeStage === 2 && (
+          <section className="category-browser" aria-label="产品分类导航">
+            <div className="category-browser-head">
+              <div>
+                <span className="eyebrow">分类雷达</span>
+                <h2>按业务场景浏览产品</h2>
+              </div>
+              <button
+                className={
+                  categoryGroupFilter === '全部分组' &&
+                  categoryFilter === '全部类目'
+                    ? 'category-reset category-reset-active'
+                    : 'category-reset'
+                }
+                onClick={() => {
+                  setCategoryGroupFilter('全部分组');
+                  setCategoryFilter('全部类目');
+                }}
+              >
+                全部 {candidates.length}
+              </button>
+            </div>
+            <div className="category-group-grid">
+              {categoryGroups.map((group, groupIndex) => {
+                const groupTotal = group.categories.reduce(
+                  (sum, item) => sum + item.count,
+                  0,
+                );
+                return (
+                  <article
+                    className={`category-group-card category-tone-${(groupIndex % 6) + 1}${
+                      categoryGroupFilter === group.label
+                        ? ' category-group-active'
+                        : ''
+                    }`}
+                    key={group.label}
+                  >
+                    <button
+                      className="category-group-title"
+                      onClick={() => {
+                        setCategoryGroupFilter(group.label);
+                        setCategoryFilter('全部类目');
+                      }}
+                    >
+                      <span>{group.label}</span>
+                      <strong>{groupTotal}</strong>
+                      <small>{group.categories.length} 个类目</small>
+                    </button>
+                    <div className="category-chip-list">
+                      {group.categories.map((item) => (
+                        <button
+                          className={
+                            categoryFilter === item.category
+                              ? 'category-chip category-chip-active'
+                              : 'category-chip'
+                          }
+                          key={item.category}
+                          onClick={() => {
+                            setCategoryGroupFilter(group.label);
+                            setCategoryFilter(item.category);
+                          }}
+                        >
+                          {item.category}
+                          <span>{item.count}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        )}
         {activeStage === 2 ? (
           <div className="content-grid">
             <section className="main-column">
@@ -1586,9 +1686,10 @@ export default function Home() {
                     <select
                       aria-label="按类目筛选"
                       value={categoryFilter}
-                      onChange={(event) =>
-                        setCategoryFilter(event.target.value)
-                      }
+                      onChange={(event) => {
+                        setCategoryGroupFilter('全部分组');
+                        setCategoryFilter(event.target.value);
+                      }}
                     >
                       {categories.map((category) => (
                         <option key={category}>{category}</option>
@@ -1618,6 +1719,15 @@ export default function Home() {
                     )}
                   </div>
                 </div>
+                <p className="candidate-result-count">
+                  当前显示 {filtered.length} / {candidates.length} 个产品
+                  {categoryGroupFilter !== '全部分组'
+                    ? ` · ${categoryGroupFilter}`
+                    : ''}
+                  {categoryFilter !== '全部类目'
+                    ? ` · ${categoryFilter}`
+                    : ''}
+                </p>
                 <div className="table-wrap">
                   <table>
                     <thead>

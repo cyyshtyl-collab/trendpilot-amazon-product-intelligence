@@ -28,12 +28,12 @@ WITH products(name, category) AS (
     ('橱柜下照明灯', '照明用品'), ('庭院害虫防治用品', '庭院园艺'), ('多功能铅笔盒', '图书文具')
 )
 INSERT INTO candidates (
-  name, asin, category, market, score, verdict, trend, revenue, reviews, margin,
+  name, asin, category, data_origin, market, score, verdict, trend, revenue, reviews, margin,
   price, bsr, rating, search_volume, review_growth, review_text, scores_json,
   signals_json, pains_json, selling_point, updated_at
 )
 SELECT
-  products.name, NULL, products.category, '美国站', 15, '观察', 0, '$0', 0, 0,
+  products.name, NULL, products.category, 'amazon_official', '美国站', 15, '观察', 0, '$0', 0, 0,
   '$0', 0, 0, 0, 0, '', '[3,3,3,3,3]',
   '["Amazon 官方 2026 Best Sellers 热门产品方向","需补充 ASIN、价格、BSR 与评论数据"]',
   '["等待真实评论数据后提炼痛点"]', '等待补充 Listing 数据后生成卖点', CURRENT_TIMESTAMP

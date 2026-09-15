@@ -6,6 +6,7 @@ type CandidatePayload = {
   name?: string;
   asin?: string;
   category?: string;
+  dataOrigin?: string;
   market?: string;
   score?: number;
   verdict?: string;
@@ -172,6 +173,7 @@ export async function GET() {
     name: row.name,
     asin: row.asin,
     category: row.category,
+    dataOrigin: row.data_origin,
     market: row.market,
     score: row.score,
     verdict: row.verdict,

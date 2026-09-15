@@ -115,9 +115,9 @@ export async function persistCandidateFeed(
   const today = now.slice(0, 10);
   for (const row of rows) {
     await database.prepare(
-      `INSERT INTO candidates (name,asin,category,market,score,verdict,trend,revenue,reviews,margin,price,bsr,rating,search_volume,review_growth,review_text,scores_json,signals_json,pains_json,selling_point,updated_at)
-       VALUES (?,?,?,?,15,'观察',?,?,?,?,?,?,?, ?,0,?,'[3,3,3,3,3]',?,?,?,?)
-       ON CONFLICT(asin,market) DO UPDATE SET name=excluded.name,category=excluded.category,trend=excluded.trend,revenue=excluded.revenue,reviews=excluded.reviews,margin=excluded.margin,price=excluded.price,bsr=excluded.bsr,rating=excluded.rating,search_volume=excluded.search_volume,review_text=excluded.review_text,signals_json=excluded.signals_json,updated_at=excluded.updated_at`,
+      `INSERT INTO candidates (name,asin,category,data_origin,market,score,verdict,trend,revenue,reviews,margin,price,bsr,rating,search_volume,review_growth,review_text,scores_json,signals_json,pains_json,selling_point,updated_at)
+       VALUES (?,?,?,'automated_feed',?,15,'观察',?,?,?,?,?,?,?, ?,0,?,'[3,3,3,3,3]',?,?,?,?)
+       ON CONFLICT(asin,market) DO UPDATE SET name=excluded.name,category=excluded.category,data_origin=excluded.data_origin,trend=excluded.trend,revenue=excluded.revenue,reviews=excluded.reviews,margin=excluded.margin,price=excluded.price,bsr=excluded.bsr,rating=excluded.rating,search_volume=excluded.search_volume,review_text=excluded.review_text,signals_json=excluded.signals_json,updated_at=excluded.updated_at`,
     ).bind(
       row.name, row.asin, row.category, row.market, row.trend, row.revenue,
       row.reviews, row.margin, row.price, row.bsr, row.rating, row.searchVolume,
