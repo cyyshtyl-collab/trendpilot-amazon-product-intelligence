@@ -26,6 +26,7 @@ import {
   Upload,
   Workflow,
 } from 'lucide-react';
+import { CATEGORY_GROUPS, PRODUCT_CATEGORIES } from '@/lib/categories';
 import {
   Area,
   AreaChart,
@@ -351,11 +352,14 @@ export default function Home() {
   const [editorMode, setEditorMode] = useState<'new' | 'edit' | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [selectedSource, setSelectedSource] = useState('sellersprite');
+  const [importCategory, setImportCategory] = useState('未分类');
   const [sourceSyncing, setSourceSyncing] = useState(false);
   const [sourceMessage, setSourceMessage] = useState('');
   const [sourceRuns, setSourceRuns] = useState<SourceRun[]>([]);
   const [trendSignals, setTrendSignals] = useState<TrendSignal[]>([]);
-  const [promotingSignalId, setPromotingSignalId] = useState<number | null>(null);
+  const [promotingSignalId, setPromotingSignalId] = useState<number | null>(
+    null,
+  );
   const [screeningSignals, setScreeningSignals] = useState(false);
   const [weeklyReports, setWeeklyReports] = useState<WeeklyReport[]>([]);
   const [reportGenerating, setReportGenerating] = useState(false);
@@ -387,11 +391,12 @@ export default function Home() {
   const [alertNotes, setAlertNotes] = useState<Record<string, string>>({});
   const selected =
     candidates.find((item) => item.id === selectedId) ?? candidates[0];
-  const selectedDataQuality = selected?.asin && selected?.price !== '$0' && selected?.rating
-    ? '真实数据'
-    : selected?.asin || selected?.price !== '$0' || selected?.searchVolume
-      ? '部分数据'
-      : '示例数据';
+  const selectedDataQuality =
+    selected?.asin && selected?.price !== '$0' && selected?.rating
+      ? '真实数据'
+      : selected?.asin || selected?.price !== '$0' || selected?.searchVolume
+        ? '部分数据'
+        : '示例数据';
   const categories = useMemo(
     () => ['全部类目', ...new Set(candidates.map((item) => item.category))],
     [candidates],
@@ -539,7 +544,9 @@ export default function Home() {
 
   /** Downloads one archived report without regenerating its contents. */
   function downloadSavedReport(report: WeeklyReport): void {
-    const blob = new Blob([report.markdown], { type: 'text/markdown;charset=utf-8' });
+    const blob = new Blob([report.markdown], {
+      type: 'text/markdown;charset=utf-8',
+    });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `TrendPilot-选品周报-${report.weekStart}.md`;
@@ -583,11 +590,19 @@ export default function Home() {
     setScreeningSignals(true);
     setSourceMessage('AI 正在判断近期市场信号的商品化机会…');
     try {
-      const response = await fetch('/api/trend-signals/analyze', { method: 'POST' });
-      const result = (await response.json()) as { error?: string; analyzed?: number; message?: string };
+      const response = await fetch('/api/trend-signals/analyze', {
+        method: 'POST',
+      });
+      const result = (await response.json()) as {
+        error?: string;
+        analyzed?: number;
+        message?: string;
+      };
       if (!response.ok) throw new Error(result.error ?? 'AI 筛选失败');
       await loadTrendSignals();
-      setSourceMessage(result.message ?? `AI 已完成 ${result.analyzed ?? 0} 条信号筛选。`);
+      setSourceMessage(
+        result.message ?? `AI 已完成 ${result.analyzed ?? 0} 条信号筛选。`,
+      );
     } catch (error) {
       setSourceMessage(error instanceof Error ? error.message : 'AI 筛选失败');
     } finally {
@@ -864,7 +879,8 @@ export default function Home() {
         return {
           name: read(cells, column.name).trim(),
           asin: read(cells, column.asin).trim().toUpperCase() || undefined,
-          category: read(cells, column.category, '未分类') || '未分类',
+          category:
+            read(cells, column.category, importCategory) || importCategory,
           market: read(cells, column.market, '美国站') || '美国站',
           trend: Number(read(cells, column.trend)) || 0,
           revenue: read(cells, column.revenue, '$0') || '$0',
@@ -966,7 +982,9 @@ export default function Home() {
       link.download = `TrendPilot-Google-Trends-US-${new Date().toISOString().slice(0, 10)}.csv`;
       link.click();
       URL.revokeObjectURL(href);
-      setSourceMessage('已下载最新 Google Trends CSV，可直接用于选品补充判断。');
+      setSourceMessage(
+        '已下载最新 Google Trends CSV，可直接用于选品补充判断。',
+      );
       await loadSourceRuns();
       await loadTrendSignals();
     } catch (error) {
@@ -1139,7 +1157,7 @@ export default function Home() {
             </button>
           </form>
           <p className="login-note">
-          仅限内部成员使用；账号由管理员创建并可随时停用。
+            仅限内部成员使用；账号由管理员创建并可随时停用。
           </p>
         </section>
         <aside className="login-visual" aria-hidden="true">
@@ -1297,7 +1315,9 @@ export default function Home() {
               {activeStage === 0 && '1 个免费自动源'}
               {activeStage === 1 && '基于已入库数据'}
               {activeStage === 2 &&
-                (aiStatus.configured ? `${aiStatus.provider} 已连接` : '规则预评分')}
+                (aiStatus.configured
+                  ? `${aiStatus.provider} 已连接`
+                  : '规则预评分')}
               {activeStage === 3 && `${weeklyReports.length} 期周报已保存`}
             </span>
           </div>
@@ -1678,7 +1698,9 @@ export default function Home() {
                     <p>
                       {selected.category} · {selected.market}
                     </p>
-                    <span className={`data-quality quality-${selectedDataQuality}`}>
+                    <span
+                      className={`data-quality quality-${selectedDataQuality}`}
+                    >
                       {selectedDataQuality}
                     </span>
                   </div>
@@ -1852,19 +1874,28 @@ export default function Home() {
                   <div className="field-guide">
                     <strong>Amazon 真实数据接入</strong>
                     <p>
-                      在 Octoparse 按 ASIN 采集标题、价格、BSR、评分、评论数和差评，导出 CSV 后点击右上角“导入采集数据”。
+                      在 Octoparse 按 ASIN
+                      采集标题、价格、BSR、评分、评论数和差评，导出 CSV
+                      后点击右上角“导入采集数据”。
                     </p>
                     <p>
-                      ASIN 是必需的唯一身份；同一站点再次导入相同 ASIN 会更新商品并生成当天快照，不会重复创建。
+                      ASIN 是必需的唯一身份；同一站点再次导入相同 ASIN
+                      会更新商品并生成当天快照，不会重复创建。
                     </p>
-                    <button type="button" className="template-button" onClick={downloadCsvTemplate}>
+                    <button
+                      type="button"
+                      className="template-button"
+                      onClick={downloadCsvTemplate}
+                    >
                       <Download size={15} /> 下载 Octoparse 标准模板
                     </button>
                   </div>
                   <div className="source-runs">
                     <div className="source-runs-head">
                       <strong>最近采集</strong>
-                      <span>{sourceRuns.length ? '已持久保存' : '等待首次运行'}</span>
+                      <span>
+                        {sourceRuns.length ? '已持久保存' : '等待首次运行'}
+                      </span>
                     </div>
                     {sourceRuns.length === 0 ? (
                       <p className="source-runs-empty">
@@ -1884,7 +1915,9 @@ export default function Home() {
                             <strong>{run.source}</strong>
                             <span>{run.market}</span>
                             <span>{run.itemCount} 条</span>
-                            <time>{new Date(run.finishedAt).toLocaleString('zh-CN')}</time>
+                            <time>
+                              {new Date(run.finishedAt).toLocaleString('zh-CN')}
+                            </time>
                           </div>
                         ))}
                       </div>
@@ -1912,12 +1945,18 @@ export default function Home() {
                         {trendSignals.slice(0, 8).map((signal) => (
                           <article key={signal.id} className="signal-card">
                             <div>
-                              <span>{signal.source} · {signal.market}</span>
+                              <span>
+                                {signal.source} · {signal.market}
+                              </span>
                               <strong>{signal.keyword}</strong>
                               {signal.aiVerdict && (
-                                <p className={`signal-advice advice-${signal.aiVerdict}`}>
+                                <p
+                                  className={`signal-advice advice-${signal.aiVerdict}`}
+                                >
                                   {signal.aiVerdict} · {signal.aiScore ?? 0}分
-                                  {signal.aiReason ? ` · ${signal.aiReason}` : ''}
+                                  {signal.aiReason
+                                    ? ` · ${signal.aiReason}`
+                                    : ''}
                                 </p>
                               )}
                               <button
@@ -2190,17 +2229,26 @@ export default function Home() {
                       <span className="eyebrow">自动周报中心</span>
                       <h2>报告历史</h2>
                     </div>
-                    <span className="source-summary">{weeklyReports.length} 期已保存</span>
+                    <span className="source-summary">
+                      {weeklyReports.length} 期已保存
+                    </span>
                   </div>
                   {weeklyReports.length === 0 ? (
-                    <p className="weekly-empty">生成本周周报后，历史版本会保存在这里。</p>
+                    <p className="weekly-empty">
+                      生成本周周报后，历史版本会保存在这里。
+                    </p>
                   ) : (
                     <div className="weekly-list">
                       {weeklyReports.map((report) => (
                         <article key={report.id}>
                           <div>
                             <strong>{report.title}</strong>
-                            <span>更新于 {new Date(report.updatedAt).toLocaleString('zh-CN')}</span>
+                            <span>
+                              更新于{' '}
+                              {new Date(report.updatedAt).toLocaleString(
+                                'zh-CN',
+                              )}
+                            </span>
                           </div>
                           <b>{report.highPotentialCount} 个推进</b>
                           <span>{report.trackedCount} 个追踪</span>
@@ -2211,7 +2259,9 @@ export default function Home() {
                       ))}
                     </div>
                   )}
-                  {reportMessage && <p className="source-action-message">{reportMessage}</p>}
+                  {reportMessage && (
+                    <p className="source-action-message">{reportMessage}</p>
+                  )}
                 </article>
               </>
             )}
@@ -2239,7 +2289,9 @@ export default function Home() {
               <div>
                 <span className="eyebrow">候选产品数据</span>
                 <h2 id="add-title">
-                  {editorMode === 'edit' ? '补全 Amazon 商品数据' : '新增候选产品'}
+                  {editorMode === 'edit'
+                    ? '补全 Amazon 商品数据'
+                    : '新增候选产品'}
                 </h2>
               </div>
               <button
@@ -2287,11 +2339,17 @@ export default function Home() {
                   产品类目
                   <input
                     name="category"
+                    list="product-category-options"
                     defaultValue={
                       editorMode === 'edit' ? selected.category : ''
                     }
-                    placeholder="选择或输入类目"
+                    placeholder="选择推荐类目或输入自定义类目"
                   />
+                  <datalist id="product-category-options">
+                    {PRODUCT_CATEGORIES.map((category) => (
+                      <option value={category} key={category} />
+                    ))}
+                  </datalist>
                 </label>
                 <label>
                   近 6 月趋势增幅 (%)
@@ -2353,7 +2411,9 @@ export default function Home() {
                   <input
                     name="reviewGrowth"
                     type="number"
-                    defaultValue={editorMode === 'edit' ? selected.reviewGrowth : 0}
+                    defaultValue={
+                      editorMode === 'edit' ? selected.reviewGrowth : 0
+                    }
                   />
                 </label>
                 <label>
@@ -2362,7 +2422,9 @@ export default function Home() {
                     name="searchVolume"
                     type="number"
                     min="0"
-                    defaultValue={editorMode === 'edit' ? selected.searchVolume : 0}
+                    defaultValue={
+                      editorMode === 'edit' ? selected.searchVolume : 0
+                    }
                   />
                 </label>
                 <label>
@@ -2417,7 +2479,9 @@ export default function Home() {
                 <Database size={18} />
                 <div>
                   <strong>保存后自动生成当日数据快照</strong>
-                  <p>真实数据会进入趋势历史；随后可用 AI 重新评分并提炼差评痛点。</p>
+                  <p>
+                    真实数据会进入趋势历史；随后可用 AI 重新评分并提炼差评痛点。
+                  </p>
                 </div>
               </div>
               <div className="modal-actions">
@@ -2464,6 +2528,24 @@ export default function Home() {
                 ))}
               </select>
             </label>
+            <label className="source-select-label">
+              CSV 缺失类目时归入
+              <select
+                value={importCategory}
+                onChange={(event) => setImportCategory(event.target.value)}
+              >
+                <option value="未分类">未分类</option>
+                {CATEGORY_GROUPS.map((group) => (
+                  <optgroup label={group.label} key={group.label}>
+                    {group.categories.map((category) => (
+                      <option value={category} key={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
             <label className="upload-zone">
               <Upload size={28} />
               <strong>选择 CSV 文件</strong>
@@ -2495,6 +2577,9 @@ export default function Home() {
               <p>
                 建议必填：ASIN + 产品名称；同一站点的相同 ASIN
                 会更新原记录，不再重复创建。
+              </p>
+              <p>
+                已内置 6 个品类组、36 个常用类目；CSV 仍可填写任意自定义类目。
               </p>
               <p>
                 支持：价格、BSR、评分、评论数、评论增速、关键词搜索量、差评内容、趋势、销售额、毛利率及五维评分；缺省评分按
