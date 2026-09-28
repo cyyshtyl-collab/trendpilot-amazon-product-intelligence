@@ -22,8 +22,12 @@ export async function POST(request: Request): Promise<Response> {
   const startedAt = new Date().toISOString();
   const result = await db()
     .prepare(
-      `SELECT asin,price,bsr,rating,reviews,updated_at
-       FROM candidates WHERE asin IS NOT NULL AND asin <> ''`,
+      `SELECT c.asin,c.price,c.bsr,c.rating,c.reviews,c.trend,c.margin,c.updated_at,
+              string_agg(v.verified_fields,'、') AS verification_fields
+       FROM candidates c
+       LEFT JOIN data_verifications v ON v.candidate_id=c.id
+       WHERE c.asin IS NOT NULL AND c.asin <> ''
+       GROUP BY c.id`,
     )
     .all<Record<string, string | number | null>>();
   const report = summarizeDataQuality(result.results);

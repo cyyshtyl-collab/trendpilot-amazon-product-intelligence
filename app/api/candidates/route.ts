@@ -14,6 +14,8 @@ type CandidatePayload = {
   revenue?: string;
   reviews?: number;
   margin?: number;
+  trendVerified?: boolean;
+  marginVerified?: boolean;
   price?: string;
   bsr?: number;
   rating?: number;
@@ -193,7 +195,12 @@ export async function GET() {
   if (!(await authorized()))
     return Response.json({ error: '未登录' }, { status: 401 });
   const result = await db()
-    .prepare('SELECT * FROM candidates ORDER BY score DESC, id DESC')
+    .prepare(
+      `SELECT c.*,
+              EXISTS(SELECT 1 FROM data_verifications v WHERE v.candidate_id=c.id AND v.verified_fields LIKE '%趋势%') AS trend_verified,
+              EXISTS(SELECT 1 FROM data_verifications v WHERE v.candidate_id=c.id AND v.verified_fields LIKE '%毛利%') AS margin_verified
+       FROM candidates c ORDER BY c.score DESC,c.id DESC`,
+    )
     .all<Record<string, unknown>>();
   const candidates = result.results.map((row) => ({
     id: row.id,
@@ -205,9 +212,11 @@ export async function GET() {
     score: row.score,
     verdict: row.verdict,
     trend: row.trend,
+    trendVerified: row.trend_verified === true,
     revenue: row.revenue,
     reviews: row.reviews,
     margin: row.margin,
+    marginVerified: row.margin_verified === true,
     price: row.price,
     bsr: row.bsr,
     rating: row.rating,

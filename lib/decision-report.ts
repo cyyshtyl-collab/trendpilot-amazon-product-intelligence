@@ -8,6 +8,8 @@ export type DecisionCandidateInput = {
   verdict: string;
   trend: number;
   margin: number;
+  trendVerified?: boolean;
+  marginVerified?: boolean;
   price?: string | null;
   bsr?: number | null;
   rating?: number | null;
@@ -19,15 +21,17 @@ export type DecisionCandidateInput = {
 export type RankedDecisionCandidate<T extends DecisionCandidateInput> = T & {
   completeness: number;
   decisionScore: number;
+  bsrPercentile: number;
 };
 
-/** Returns true when a price contains a positive numeric amount. */
+/** Returns true when marketplace currency text contains a positive amount. */
 function hasPrice(price?: string | null): boolean {
-  const amount = Number(String(price ?? '').replace(/[^0-9.]/g, ''));
+  if (typeof price !== 'string' && typeof price !== 'number') return false;
+  const amount = Number(String(price).replace(/[^0-9.]/g, ''));
   return Number.isFinite(amount) && amount > 0;
 }
 
-/** Counts the four market fields required before a product enters a decision report. */
+/** Counts the four Listing facts required before a product enters a report. */
 export function decisionCompleteness(candidate: DecisionCandidateInput): number {
   return [
     hasPrice(candidate.price),
@@ -37,72 +41,113 @@ export function decisionCompleteness(candidate: DecisionCandidateInput): number 
   ].filter(Boolean).length;
 }
 
-/** Requires complete Listing evidence plus non-placeholder trend and margin data. */
+/** Distinguishes an absent zero placeholder from a source-verified zero value. */
+function hasObservedMetric(value: number, verified = false): boolean {
+  return Number.isFinite(Number(value)) && (Number(value) !== 0 || verified);
+}
+
+/** Requires complete Listing evidence plus observed trend and margin metrics. */
 export function isFinalDecisionReady(candidate: DecisionCandidateInput): boolean {
   return (
     decisionCompleteness(candidate) === 4 &&
-    Number(candidate.trend) !== 0 &&
-    Number(candidate.margin) > 0
+    hasObservedMetric(candidate.trend, candidate.trendVerified) &&
+    hasObservedMetric(candidate.margin, candidate.marginVerified)
   );
 }
 
-/** Builds a 100-point decision rank from AI score, data coverage and market evidence. */
-export function decisionRank(candidate: DecisionCandidateInput): number {
+/** Builds a 100-point score using a category-relative BSR percentile. */
+export function decisionRank(
+  candidate: DecisionCandidateInput,
+  bsrPercentile = 0.5,
+): number {
   const ai = Math.min(25, Math.max(0, Number(candidate.score) || 0)) / 25;
   const rating = Math.min(5, Math.max(0, Number(candidate.rating) || 0)) / 5;
   const reviewDepth = Math.min(
     1,
     Math.log10(Math.max(0, Number(candidate.reviews) || 0) + 1) / 5,
   );
-  const bsr = Math.max(1, Number(candidate.bsr) || 1_000_000);
-  const bsrStrength = Math.max(0, 1 - Math.log10(bsr) / 6);
+  const bsrStrength = Math.min(1, Math.max(0, bsrPercentile));
   const trendStrength = Math.min(
     1,
     Math.max(0, (Number(candidate.trend) + 20) / 50),
   );
   const marginStrength = Math.min(1, Math.max(0, Number(candidate.margin) / 50));
-  return Math.round(
-    (ai * 45 + rating * 10 + reviewDepth * 10 + bsrStrength * 15 + trendStrength * 10 + marginStrength * 10) * 10,
-  ) / 10;
-}
-
-/** Keeps only source-backed products and ranks each ASIN once for management review. */
-export function rankDecisionCandidates<T extends DecisionCandidateInput>(
-  candidates: T[],
-): RankedDecisionCandidate<T>[] {
-  const unique = new Map<string, RankedDecisionCandidate<T>>();
-  for (const candidate of candidates) {
-    const asin = candidate.asin?.trim().toUpperCase();
-    const completeness = decisionCompleteness(candidate);
-    if (
-      !asin ||
-      !/^[A-Z0-9]{10}$/.test(asin) ||
-      !isFinalDecisionReady(candidate)
-    )
-      continue;
-    const ranked = {
-      ...candidate,
-      asin,
-      completeness,
-      decisionScore: decisionRank(candidate),
-    };
-    const key = `${candidate.market}|${asin}`;
-    const current = unique.get(key);
-    if (!current || ranked.decisionScore > current.decisionScore) {
-      unique.set(key, ranked);
-    }
-  }
-  return [...unique.values()].sort(
-    (left, right) =>
-      right.decisionScore - left.decisionScore ||
-      right.score - left.score ||
-      right.id - left.id,
+  return (
+    Math.round(
+      (ai * 45 +
+        rating * 10 +
+        reviewDepth * 10 +
+        bsrStrength * 15 +
+        trendStrength * 10 +
+        marginStrength * 10) *
+        10,
+    ) / 10
   );
 }
 
-/** Averages only populated positive metrics so missing data cannot masquerade as zero. */
+/** Assigns a 0–1 BSR percentile within each marketplace and category. */
+function categoryBsrPercentiles<T extends DecisionCandidateInput>(
+  candidates: T[],
+): Map<number, number> {
+  const groups = new Map<string, T[]>();
+  for (const candidate of candidates) {
+    const key = `${candidate.market.trim()}|${candidate.category.trim()}`;
+    groups.set(key, [...(groups.get(key) ?? []), candidate]);
+  }
+  const percentiles = new Map<number, number>();
+  for (const group of groups.values()) {
+    const sorted = [...group].sort(
+      (left, right) => Number(left.bsr) - Number(right.bsr) || left.id - right.id,
+    );
+    for (const [index, candidate] of sorted.entries()) {
+      percentiles.set(
+        candidate.id,
+        sorted.length === 1 ? 0.5 : 1 - index / (sorted.length - 1),
+      );
+    }
+  }
+  return percentiles;
+}
+
+/** Keeps source-backed products and ranks each ASIN once for management review. */
+export function rankDecisionCandidates<T extends DecisionCandidateInput>(
+  candidates: T[],
+): RankedDecisionCandidate<T>[] {
+  const unique = new Map<string, T>();
+  for (const candidate of candidates) {
+    const asin = candidate.asin?.trim().toUpperCase();
+    if (!asin || !/^[A-Z0-9]{10}$/.test(asin) || !isFinalDecisionReady(candidate))
+      continue;
+    const normalized = { ...candidate, asin };
+    const key = `${candidate.market}|${asin}`;
+    const current = unique.get(key);
+    if (!current || candidate.score > current.score || candidate.id > current.id)
+      unique.set(key, normalized);
+  }
+
+  const eligible = [...unique.values()];
+  const percentiles = categoryBsrPercentiles(eligible);
+  return eligible
+    .map((candidate) => {
+      const bsrPercentile = percentiles.get(candidate.id) ?? 0.5;
+      return {
+        ...candidate,
+        completeness: decisionCompleteness(candidate),
+        bsrPercentile,
+        decisionScore: decisionRank(candidate, bsrPercentile),
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.decisionScore - left.decisionScore ||
+        right.score - left.score ||
+        right.id - left.id,
+    );
+}
+
+/** Averages every observed finite metric, including flat and negative values. */
 export function averageKnown(values: number[]): number {
-  const known = values.filter((value) => Number.isFinite(value) && value > 0);
+  const known = values.filter(Number.isFinite);
   return known.length
     ? known.reduce((sum, value) => sum + value, 0) / known.length
     : 0;

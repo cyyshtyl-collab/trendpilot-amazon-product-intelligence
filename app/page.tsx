@@ -59,9 +59,11 @@ type Candidate = {
   score: number;
   verdict: Verdict;
   trend: number;
+  trendVerified?: boolean;
   revenue: string;
   reviews: number;
   margin: number;
+  marginVerified?: boolean;
   price?: string;
   bsr?: number;
   rating?: number;

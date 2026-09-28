@@ -17,9 +17,16 @@ export type DataQualityReport = {
 
 type QualityRow = Record<string, string | number | null>;
 
+/** Returns true when an audit event explicitly verified the named metric. */
+function verified(row: QualityRow, field: string): boolean {
+  const value = row.verification_fields;
+  return typeof value === 'string' && value.split(/[、,|]/).includes(field);
+}
+
 /** Treats marketplace currency text as present only when it contains a positive amount. */
 function hasPositiveAmount(value: unknown): boolean {
-  const parsed = Number.parseFloat(String(value ?? '').replace(/[^0-9.]/g, ''));
+  if (typeof value !== 'string' && typeof value !== 'number') return false;
+  const parsed = Number.parseFloat(String(value).replace(/[^0-9.]/g, ''));
   return Number.isFinite(parsed) && parsed > 0;
 }
 
@@ -57,8 +64,10 @@ export function summarizeDataQuality(
     if (!fields[1]) missingBsr += 1;
     if (!fields[2]) missingRating += 1;
     if (!fields[3]) missingReviews += 1;
-    const hasTrend = Number(row.trend ?? 0) !== 0;
-    const hasMargin = Number(row.margin ?? 0) > 0;
+    const trend = Number(row.trend ?? 0);
+    const margin = Number(row.margin ?? 0);
+    const hasTrend = Number.isFinite(trend) && (trend !== 0 || verified(row, '趋势'));
+    const hasMargin = Number.isFinite(margin) && (margin !== 0 || verified(row, '毛利'));
     if (!hasTrend) missingTrend += 1;
     if (!hasMargin) missingMargin += 1;
     if (populated === 4) fullyComplete += 1;

@@ -106,7 +106,11 @@ export async function POST(): Promise<Response> {
     return Response.json({ error: '仅管理员可生成正式周报' }, { status: 403 });
   const candidates = await db()
     .prepare(
-      "SELECT id,name,asin,category,market,score,verdict,trend,margin,price,bsr,rating,reviews,search_volume,selling_point FROM candidates WHERE asin IS NOT NULL ORDER BY score DESC,id DESC",
+      `SELECT c.id,c.name,c.asin,c.category,c.market,c.score,c.verdict,c.trend,c.margin,
+              c.price,c.bsr,c.rating,c.reviews,c.search_volume,c.selling_point,
+              EXISTS(SELECT 1 FROM data_verifications v WHERE v.candidate_id=c.id AND v.verified_fields LIKE '%趋势%') AS trend_verified,
+              EXISTS(SELECT 1 FROM data_verifications v WHERE v.candidate_id=c.id AND v.verified_fields LIKE '%毛利%') AS margin_verified
+       FROM candidates c WHERE c.asin IS NOT NULL ORDER BY c.score DESC,c.id DESC`,
     )
     .all<Record<string, unknown>>();
   const normalized = candidates.results.map((row) => ({
@@ -119,12 +123,15 @@ export async function POST(): Promise<Response> {
     verdict: String(row.verdict),
     trend: Number(row.trend),
     margin: Number(row.margin),
+    trendVerified: row.trend_verified === true,
+    marginVerified: row.margin_verified === true,
     price: String(row.price),
     bsr: Number(row.bsr),
     rating: Number(row.rating),
     reviews: Number(row.reviews),
     searchVolume: Number(row.search_volume),
-    sellingPoint: String(row.selling_point ?? ''),
+    sellingPoint:
+      typeof row.selling_point === 'string' ? row.selling_point : '',
   })) satisfies CandidateRow[];
   const rows = rankDecisionCandidates(normalized);
   const week = weekStart();

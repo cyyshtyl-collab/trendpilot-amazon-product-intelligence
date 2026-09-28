@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "oxlint",
+    "test": "node --test --experimental-strip-types tests/*.test.ts",
     "format": "oxfmt",
     "db:generate": "drizzle-kit generate"
   },
