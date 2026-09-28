@@ -49,7 +49,8 @@ export async function POST(request: Request): Promise<Response> {
     )
     .bind(body.id)
     .first<Record<string, unknown>>();
-  if (!signal) return Response.json({ error: '市场信号不存在' }, { status: 404 });
+  if (!signal)
+    return Response.json({ error: '市场信号不存在' }, { status: 404 });
   if (signal.candidate_id)
     return Response.json({ candidateId: signal.candidate_id, existing: true });
   const intent = productIntent(String(signal.keyword));

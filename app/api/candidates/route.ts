@@ -1,5 +1,5 @@
 import { env } from '@/lib/runtime';
-import { authorized } from '@/lib/auth';
+import { authorized, authorizedAdmin } from '@/lib/auth';
 
 type CandidatePayload = {
   id?: number;
@@ -55,7 +55,8 @@ function completeness(candidate: CandidateView): number {
 function deduplicateCandidates(candidates: CandidateView[]): CandidateView[] {
   const unique = new Map<string, CandidateView>();
   for (const candidate of candidates) {
-    const normalizedName = candidate.name?.trim().toLocaleLowerCase('zh-CN') ?? '';
+    const normalizedName =
+      candidate.name?.trim().toLocaleLowerCase('zh-CN') ?? '';
     const key = candidate.asin
       ? `${candidate.market}|asin:${candidate.asin}`
       : `${candidate.market}|name:${normalizedName}`;
@@ -70,7 +71,8 @@ function deduplicateCandidates(candidates: CandidateView[]): CandidateView[] {
     }
   }
   return [...unique.values()].sort(
-    (left, right) => Number(right.score) - Number(left.score) || right.id - left.id,
+    (left, right) =>
+      Number(right.score) - Number(left.score) || right.id - left.id,
   );
 }
 
@@ -78,11 +80,23 @@ function db(): D1Database {
   return (env as unknown as { DB: D1Database }).DB;
 }
 function invalid(body: CandidatePayload): string | null {
+  const inRange = (value: number | undefined, minimum: number, maximum: number) =>
+    value === undefined ||
+    (Number.isFinite(value) && value >= minimum && value <= maximum);
   if (!body.name?.trim()) return '产品名称不能为空';
   if (body.asin?.trim() && !/^[A-Z0-9]{10}$/i.test(body.asin.trim()))
     return 'ASIN 必须是 10 位字母或数字';
   if (!Array.isArray(body.scores) || body.scores.length !== 5)
     return '五维评分不完整';
+  if (!body.scores.every((score) => inRange(score, 1, 5)))
+    return '五维评分必须在 1–5 分之间';
+  if (!inRange(body.rating, 0, 5)) return 'Amazon 评分必须在 0–5 分之间';
+  if (!inRange(body.margin, -1000, 100)) return '毛利率必须在 -1000%–100% 之间';
+  if (!inRange(body.bsr, 0, Number.MAX_SAFE_INTEGER)) return 'BSR 不能为负数';
+  if (!inRange(body.reviews, 0, Number.MAX_SAFE_INTEGER))
+    return '评论数量不能为负数';
+  if (!inRange(body.searchVolume, 0, Number.MAX_SAFE_INTEGER))
+    return '关键词搜索量不能为负数';
   return null;
 }
 
@@ -293,8 +307,8 @@ export async function PUT(request: Request) {
 
 /** Deletes one candidate record. */
 export async function DELETE(request: Request) {
-  if (!(await authorized()))
-    return Response.json({ error: '未登录' }, { status: 401 });
+  if (!(await authorizedAdmin()))
+    return Response.json({ error: '仅管理员可删除商品' }, { status: 403 });
   const id = Number(new URL(request.url).searchParams.get('id'));
   if (!Number.isInteger(id) || id < 1)
     return Response.json({ error: '无效产品编号' }, { status: 400 });

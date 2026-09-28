@@ -10,7 +10,8 @@ function db(): D1Database {
 }
 
 function automationAuthorized(request: Request): boolean {
-  const secret = (env as unknown as { AUTOMATION_SECRET?: string }).AUTOMATION_SECRET;
+  const secret = (env as unknown as { AUTOMATION_SECRET?: string })
+    .AUTOMATION_SECRET;
   if (!secret || secret.length < 32) return false;
   const supplied = request.headers.get('authorization');
   return supplied === `Bearer ${secret}`;
@@ -21,7 +22,9 @@ export async function GET(request: Request): Promise<Response> {
   if (!automationAuthorized(request)) {
     return Response.json({ error: '未授权' }, { status: 401 });
   }
-  const geo = normalizeTrendGeo(new URL(request.url).searchParams.get('geo') ?? 'US');
+  const geo = normalizeTrendGeo(
+    new URL(request.url).searchParams.get('geo') ?? 'US',
+  );
   const today = new Date().toISOString().slice(0, 10);
   const existing = await db()
     .prepare(
@@ -31,7 +34,12 @@ export async function GET(request: Request): Promise<Response> {
     .first<{ id: number; finished_at: string }>();
   if (existing) {
     return Response.json(
-      { ok: true, skipped: true, reason: 'today_already_collected', finishedAt: existing.finished_at },
+      {
+        ok: true,
+        skipped: true,
+        reason: 'today_already_collected',
+        finishedAt: existing.finished_at,
+      },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   }
@@ -44,7 +52,8 @@ export async function GET(request: Request): Promise<Response> {
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message.slice(0, 500) : '未知错误';
+    const message =
+      error instanceof Error ? error.message.slice(0, 500) : '未知错误';
     const finishedAt = new Date().toISOString();
     await db()
       .prepare(

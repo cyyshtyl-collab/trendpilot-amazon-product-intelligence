@@ -4,31 +4,31 @@ TrendPilot 是供内部选品团队使用的 Web 工作台，覆盖数据采集�
 评分和决策周报四个阶段。当前版本已经部署到阿里云 ECS，并使用 PostgreSQL
 持久化数据。
 
-> 状态快照：2026-09-15。当前为内部试用版，不建议在没有 HTTPS、访问控制和
+> 状态快照：2026-09-28。当前为内部试用版，不建议在没有 HTTPS、访问控制和
 > 监控告警的情况下开放给不受信任的公网用户。
 
 ## 当前状态
 
-| 项目 | 状态 | 说明 |
-| --- | --- | --- |
-| Web 应用 | 已上线 | Next.js 16，Docker 容器运行于 ECS |
-| 数据库 | 已上线 | PostgreSQL 16，数据库端口不对公网暴露 |
-| 候选产品 | 已入库 | 448 条；原候选池与真实 Listing 统一管理 |
-| 真实 Listing | 已完成首批验证 | 259 个唯一 ASIN，覆盖 5 个重点类目、美国站 |
-| Google Trends | 已自动化 | 每天 09:00 采集美国站公开趋势 |
-| 商品 CSV Feed | 已完成、待配置 | 每 6 小时检查；配置可下载地址后可无人值守导入 |
-| AI 评分 | 已上线 | SiliconFlow 已配置，支持五维评分与卖点提炼 |
-| 用户登录 | 已上线 | 环境管理员 + 数据库内部成员，8 小时会话 |
-| 自动周报 | 已上线 | 支持生成、保存与下载周报 |
-| 数据备份 | 已上线 | 每天 03:00，保留 14 天；当前已有备份文件 |
-| 域名与 HTTPS | 未完成 | 当前仅 HTTP/IP 访问 |
+| 项目          | 状态           | 说明                                          |
+| ------------- | -------------- | --------------------------------------------- |
+| Web 应用      | 已上线         | Next.js 16，Docker 容器运行于 ECS             |
+| 数据库        | 已上线         | PostgreSQL 16，数据库端口不对公网暴露         |
+| 候选产品      | 已入库         | 公开趋势、ASIN 候选与已复核商品分口径管理   |
+| Amazon 候选  | 已上线         | 粘贴链接或 ASIN，不自动抓取受限字段         |
+| Google Trends | 已自动化       | 每天 09:00 采集美国站公开趋势                 |
+| CSV/XLSX 导入 | 已保留         | 支持 Octoparse、卖家精灵和自定义表格       |
+| AI 评分       | 已上线         | SiliconFlow 已配置，支持五维评分与卖点提炼    |
+| 用户登录      | 已上线         | 环境管理员 + 数据库内部成员，8 小时会话       |
+| 自动周报      | 已上线         | 支持生成、保存与下载周报                      |
+| 数据备份      | 待复核         | 每天 03:00，保留 14 天；恢复演练尚待线上执行  |
+| 域名与 HTTPS  | 未完成         | 当前仅 HTTP/IP 访问                           |
 
 详细状态与风险见 [项目状态](docs/PROJECT_STATUS.md)。
 
 ## 使用路径
 
 1. 登录系统，在“数据采集”查看渠道和最近运行结果。
-2. 导入标准 CSV，或配置自动商品 Feed。
+2. 粘贴 Amazon 链接/ASIN，或导入 Octoparse、卖家精灵 CSV/XLSX。
 3. 在“趋势分析”筛选升温、回落及异常产品。
 4. 在“AI 评分”运行五维评分，复核痛点和卖点。
 5. 在“决策产出”生成并下载周报。
@@ -38,7 +38,7 @@ TrendPilot 是供内部选品团队使用的 Web 工作台，覆盖数据采集�
 ```mermaid
 flowchart LR
   A[Google Trends] --> C[采集与归一化]
-  B[Octoparse / 飞书 / Airtable CSV] --> C
+  B[Amazon 链接 / ASIN / CSV / XLSX] --> C
   C --> D[(PostgreSQL)]
   D --> E[趋势分析]
   D --> F[SiliconFlow AI 评分]
@@ -62,6 +62,10 @@ npm run dev
 npm run build
 ```
 
+生产数据库以 `deploy/postgres.sql` 为新环境完整基线，以 `deploy/migrations/`
+为已有环境的增量升级入口。`db/schema.ts` 和 `drizzle/` 是早期 SQLite 历史记录，
+不得用于生产 PostgreSQL 初始化。
+
 所需环境变量、部署和恢复步骤见 [运维手册](docs/OPERATIONS.md)。
 
 ## 文档导航
@@ -70,6 +74,7 @@ npm run build
 - [运维与部署手册](docs/OPERATIONS.md)
 - [商品数据接入规范](docs/DATA_INGESTION.md)
 - [交接与验收清单](docs/HANDOVER_CHECKLIST.md)
+- [0.19.0 发布基线](docs/RELEASE_0.19.0.md)
 
 ## 安全原则
 

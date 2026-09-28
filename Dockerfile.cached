@@ -1,0 +1,20 @@
+ARG CACHED_IMAGE=trendpilot-app:ecs-20260923.1
+
+FROM ${CACHED_IMAGE} AS builder
+USER root
+WORKDIR /build
+ENV NODE_ENV=development
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev
+ENV NODE_ENV=production
+COPY . .
+RUN npm run build
+
+FROM ${CACHED_IMAGE} AS runner
+USER root
+WORKDIR /app
+COPY --from=builder --chown=app:app /build/.next/standalone ./
+COPY --from=builder --chown=app:app /build/.next/static ./.next/static
+COPY --from=builder --chown=app:app /build/public ./public
+USER app
+CMD ["node", "server.js"]

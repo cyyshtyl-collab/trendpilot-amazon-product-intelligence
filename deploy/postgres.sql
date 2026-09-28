@@ -15,6 +15,11 @@ CREATE INDEX IF NOT EXISTS idx_candidates_verdict ON candidates(verdict);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_candidates_asin_market ON candidates(asin, market);
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS data_origin TEXT NOT NULL DEFAULT 'manual';
 
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS analysis_runs (
   id SERIAL PRIMARY KEY, provider TEXT NOT NULL, model TEXT NOT NULL,
   requested INTEGER NOT NULL, succeeded INTEGER NOT NULL, fallback INTEGER NOT NULL,
@@ -33,6 +38,25 @@ CREATE TABLE IF NOT EXISTS candidate_snapshots (
   UNIQUE(candidate_id, captured_date)
 );
 CREATE INDEX IF NOT EXISTS idx_snapshots_captured_date ON candidate_snapshots(captured_date);
+
+CREATE TABLE IF NOT EXISTS data_verifications (
+  id SERIAL PRIMARY KEY,
+  candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+  verified_fields TEXT NOT NULL, source TEXT NOT NULL, verified_date TEXT NOT NULL,
+  owner TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_data_verifications_candidate
+  ON data_verifications(candidate_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS completion_tasks (
+  id SERIAL PRIMARY KEY,
+  candidate_id INTEGER NOT NULL UNIQUE REFERENCES candidates(id) ON DELETE CASCADE,
+  assignee TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+  due_date TEXT NOT NULL, note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_completion_tasks_status_due
+  ON completion_tasks(status, due_date);
 
 CREATE TABLE IF NOT EXISTS alert_actions (
   alert_key TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'pending',
@@ -71,3 +95,7 @@ CREATE TABLE IF NOT EXISTS app_users (
   password_salt TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'member',
   status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
+
+INSERT INTO schema_migrations(version, applied_at)
+VALUES ('baseline-20260928', CURRENT_TIMESTAMP::TEXT)
+ON CONFLICT(version) DO NOTHING;

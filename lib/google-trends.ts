@@ -29,7 +29,9 @@ export function normalizeTrendGeo(value?: string): string {
 }
 
 /** Fetches the current public Google Trends RSS feed for one supported market. */
-export async function fetchGoogleTrends(geo: string): Promise<GoogleTrendItem[]> {
+export async function fetchGoogleTrends(
+  geo: string,
+): Promise<GoogleTrendItem[]> {
   const safeGeo = normalizeTrendGeo(geo);
   const response = await fetch(
     `https://trends.google.com/trending/rss?geo=${encodeURIComponent(safeGeo)}`,
@@ -75,23 +77,33 @@ export async function persistGoogleTrends(
       .prepare(
         'INSERT INTO source_runs (source,market,status,item_count,error_message,started_at,finished_at) VALUES (?,?,?,?,?,?,?)',
       )
-      .bind('Google Trends', geo, 'success', items.length, '', startedAt, finishedAt),
-    ...items.slice(0, 100).map((item) =>
-      database
-        .prepare(
-          'INSERT INTO trend_signals (keyword,source,market,traffic_text,traffic_value,published_at,captured_date,created_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(keyword,source,market,captured_date) DO UPDATE SET traffic_text=excluded.traffic_text,traffic_value=excluded.traffic_value,published_at=excluded.published_at,created_at=excluded.created_at',
-        )
-        .bind(
-          item.keyword,
-          item.source,
-          geo,
-          item.traffic,
-          trendTrafficValue(item.traffic),
-          item.publishedAt,
-          capturedDate,
-          finishedAt,
-        ),
-    ),
+      .bind(
+        'Google Trends',
+        geo,
+        'success',
+        items.length,
+        '',
+        startedAt,
+        finishedAt,
+      ),
+    ...items
+      .slice(0, 100)
+      .map((item) =>
+        database
+          .prepare(
+            'INSERT INTO trend_signals (keyword,source,market,traffic_text,traffic_value,published_at,captured_date,created_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(keyword,source,market,captured_date) DO UPDATE SET traffic_text=excluded.traffic_text,traffic_value=excluded.traffic_value,published_at=excluded.published_at,created_at=excluded.created_at',
+          )
+          .bind(
+            item.keyword,
+            item.source,
+            geo,
+            item.traffic,
+            trendTrafficValue(item.traffic),
+            item.publishedAt,
+            capturedDate,
+            finishedAt,
+          ),
+      ),
   ];
   await database.batch(statements);
   return finishedAt;

@@ -14,6 +14,16 @@ export type FeedCandidate = {
   reviewText: string;
 };
 
+export type FeedImportIssue = {
+  row: number;
+  reason: string;
+};
+
+export type FeedImportReport = {
+  candidates: FeedCandidate[];
+  issues: FeedImportIssue[];
+};
+
 const MAX_FEED_BYTES = 5_000_000;
 const MAX_FEED_ROWS = 500;
 
@@ -42,13 +52,14 @@ const HEADER_ALIASES: Record<CsvField, string[]> = {
     'original input url',
     'current page url',
   ],
-  category: ['类目', '分类', 'category', 'product category'],
-  market: ['站点', '市场', 'market', 'marketplace'],
-  price: ['价格', '售价', 'price', 'current price', 'sale price'],
-  bsr: ['bsr', '大类排名', '排名', 'best sellers rank', 'best seller rank'],
-  rating: ['评分', '星级', 'rating', 'stars', 'star rating'],
+  category: ['类目', '产品类目', '分类', 'category', 'product category'],
+  market: ['站点', '目标站点', '市场', 'market', 'marketplace'],
+  price: ['价格', '当前售价', '售价', 'price', 'current price', 'sale price'],
+  bsr: ['bsr', 'bsr排名', '大类排名', '排名', 'best sellers rank', 'best seller rank'],
+  rating: ['评分', 'amazon评分', '星级', 'rating', 'stars', 'star rating'],
   reviews: [
     '评论数',
+    '评论数量',
     '评价数',
     'reviews',
     'review count',
@@ -119,7 +130,10 @@ function numberValue(value: string): number {
 function asinValue(value: string): string {
   const normalized = value.trim().toUpperCase();
   if (/^[A-Z0-9]{10}$/.test(normalized)) return normalized;
-  return normalized.match(/\/(?:DP|GP\/PRODUCT)\/([A-Z0-9]{10})(?:[/?#]|$)/)?.[1] ?? '';
+  return (
+    normalized.match(/\/(?:DP|GP\/PRODUCT)\/([A-Z0-9]{10})(?:[/?#]|$)/)?.[1] ??
+    ''
+  );
 }
 
 /** Rejoins scraper-split dollars and cents into a stable currency value. */
@@ -134,11 +148,14 @@ function priceValue(value: string): string {
 /** Uses the first Amazon BSR category when the feed has no explicit category column. */
 function categoryValue(explicit: string, bsrText: string): string {
   if (explicit.trim()) return explicit.trim();
-  return bsrText.match(/#\s*[\d,]+\s+in\s+(.+?)(?:\s*\(|$)/i)?.[1]?.trim() ?? '待归类';
+  return (
+    bsrText.match(/#\s*[\d,]+\s+in\s+(.+?)(?:\s*\(|$)/i)?.[1]?.trim() ??
+    '待归类'
+  );
 }
 
-/** Parses a bounded UTF-8 CSV feed using Chinese, English or Octoparse headers. */
-export function parseCandidateFeed(csv: string): FeedCandidate[] {
+/** Parses a bounded UTF-8 CSV feed and reports invalid rows without discarding valid products. */
+export function parseCandidateFeedWithReport(csv: string): FeedImportReport {
   if (new TextEncoder().encode(csv).length > MAX_FEED_BYTES)
     throw new Error('CSV 超过 5MB 限制');
   const table = parseCsv(csv);
@@ -162,33 +179,54 @@ export function parseCandidateFeed(csv: string): FeedCandidate[] {
 
   const read = (cells: string[], index: number, fallback = ''): string =>
     index >= 0 ? (cells[index] ?? fallback).trim() : fallback;
-  const rows = table.slice(1).map((cells, rowIndex): FeedCandidate => {
+  const issues: FeedImportIssue[] = [];
+  const rows = table.slice(1).flatMap((cells, rowIndex): FeedCandidate[] => {
     const asin =
       asinValue(read(cells, columns.asin)) ||
       asinValue(read(cells, columns.sourceUrl));
     const name = read(cells, columns.name);
-    if (!name) throw new Error(`第 ${rowIndex + 2} 行缺少产品名称`);
-    if (!asin) throw new Error(`第 ${rowIndex + 2} 行无法识别 Amazon ASIN`);
+    if (!name || !asin) {
+      issues.push({
+        row: rowIndex + 2,
+        reason: !name ? '缺少产品名称' : '无法识别 Amazon ASIN',
+      });
+      return [];
+    }
     const bsrText = read(cells, columns.bsr);
-    return {
-      name,
-      asin,
-      category: categoryValue(read(cells, columns.category), bsrText),
-      market: read(cells, columns.market, '美国站') || '美国站',
-      price: priceValue(read(cells, columns.price)),
-      bsr: Math.round(numberValue(bsrText)),
-      rating: numberValue(read(cells, columns.rating)),
-      reviews: Math.round(numberValue(read(cells, columns.reviews))),
-      searchVolume: Math.round(numberValue(read(cells, columns.searchVolume))),
-      trend: numberValue(read(cells, columns.trend)),
-      revenue: read(cells, columns.revenue, '$0') || '$0',
-      margin: numberValue(read(cells, columns.margin)),
-      reviewText: read(cells, columns.reviewText).slice(0, 20_000),
-    };
+    return [
+      {
+        name,
+        asin,
+        category: categoryValue(read(cells, columns.category), bsrText),
+        market: read(cells, columns.market, '美国站') || '美国站',
+        price: priceValue(read(cells, columns.price)),
+        bsr: Math.round(numberValue(bsrText)),
+        rating: numberValue(read(cells, columns.rating)),
+        reviews: Math.round(numberValue(read(cells, columns.reviews))),
+        searchVolume: Math.round(
+          numberValue(read(cells, columns.searchVolume)),
+        ),
+        trend: numberValue(read(cells, columns.trend)),
+        revenue: read(cells, columns.revenue, '$0') || '$0',
+        margin: numberValue(read(cells, columns.margin)),
+        reviewText: read(cells, columns.reviewText).slice(0, 20_000),
+      },
+    ];
   });
-  return [
+  const candidates = [
     ...new Map(rows.map((row) => [`${row.market}:${row.asin}`, row])).values(),
   ];
+  return { candidates, issues };
+}
+
+/** Parses a bounded feed strictly for automated jobs that must reject incomplete input. */
+export function parseCandidateFeed(csv: string): FeedCandidate[] {
+  const report = parseCandidateFeedWithReport(csv);
+  if (report.issues.length > 0) {
+    const first = report.issues[0];
+    throw new Error(`第 ${first.row} 行${first.reason}`);
+  }
+  return report.candidates;
 }
 
 /** Downloads one HTTPS CSV feed with size and content-type defenses. */
@@ -215,7 +253,21 @@ export async function persistCandidateFeed(
       .prepare(
         `INSERT INTO candidates (name,asin,category,data_origin,market,score,verdict,trend,revenue,reviews,margin,price,bsr,rating,search_volume,review_growth,review_text,scores_json,signals_json,pains_json,selling_point,updated_at)
        VALUES (?,?,?,'automated_feed',?,15,'观察',?,?,?,?,?,?,?, ?,0,?,'[3,3,3,3,3]',?,?,?,?)
-       ON CONFLICT(asin,market) DO UPDATE SET name=excluded.name,category=excluded.category,data_origin=excluded.data_origin,trend=excluded.trend,revenue=excluded.revenue,reviews=excluded.reviews,margin=excluded.margin,price=excluded.price,bsr=excluded.bsr,rating=excluded.rating,search_volume=excluded.search_volume,review_text=excluded.review_text,signals_json=excluded.signals_json,updated_at=excluded.updated_at`,
+       ON CONFLICT(asin,market) DO UPDATE SET
+         name=CASE WHEN length(trim(excluded.name)) > 0 THEN excluded.name ELSE candidates.name END,
+         category=CASE WHEN excluded.category NOT IN ('','待归类','未分类') THEN excluded.category ELSE candidates.category END,
+         data_origin=excluded.data_origin,
+         trend=CASE WHEN excluded.trend <> 0 THEN excluded.trend ELSE candidates.trend END,
+         revenue=CASE WHEN excluded.revenue NOT IN ('','$0') THEN excluded.revenue ELSE candidates.revenue END,
+         reviews=CASE WHEN excluded.reviews > 0 THEN excluded.reviews ELSE candidates.reviews END,
+         margin=CASE WHEN excluded.margin > 0 THEN excluded.margin ELSE candidates.margin END,
+         price=CASE WHEN excluded.price NOT IN ('','$0') THEN excluded.price ELSE candidates.price END,
+         bsr=CASE WHEN excluded.bsr > 0 THEN excluded.bsr ELSE candidates.bsr END,
+         rating=CASE WHEN excluded.rating > 0 THEN excluded.rating ELSE candidates.rating END,
+         search_volume=CASE WHEN excluded.search_volume > 0 THEN excluded.search_volume ELSE candidates.search_volume END,
+         review_text=CASE WHEN length(trim(excluded.review_text)) > 0 THEN excluded.review_text ELSE candidates.review_text END,
+         signals_json=excluded.signals_json,
+         updated_at=excluded.updated_at`,
       )
       .bind(
         row.name,
@@ -241,7 +293,16 @@ export async function persistCandidateFeed(
       .prepare(
         `INSERT INTO candidate_snapshots (candidate_id,captured_date,price,bsr,rating,reviews,review_growth,search_volume,trend,revenue,margin,captured_at)
        SELECT id,?,?,?,?,0,?,?,?,?,?,? FROM candidates WHERE asin=? AND market=?
-       ON CONFLICT(candidate_id,captured_date) DO UPDATE SET price=excluded.price,bsr=excluded.bsr,rating=excluded.rating,reviews=excluded.reviews,search_volume=excluded.search_volume,trend=excluded.trend,revenue=excluded.revenue,margin=excluded.margin,captured_at=excluded.captured_at`,
+       ON CONFLICT(candidate_id,captured_date) DO UPDATE SET
+         price=CASE WHEN excluded.price NOT IN ('','$0') THEN excluded.price ELSE candidate_snapshots.price END,
+         bsr=CASE WHEN excluded.bsr > 0 THEN excluded.bsr ELSE candidate_snapshots.bsr END,
+         rating=CASE WHEN excluded.rating > 0 THEN excluded.rating ELSE candidate_snapshots.rating END,
+         reviews=CASE WHEN excluded.reviews > 0 THEN excluded.reviews ELSE candidate_snapshots.reviews END,
+         search_volume=CASE WHEN excluded.search_volume > 0 THEN excluded.search_volume ELSE candidate_snapshots.search_volume END,
+         trend=CASE WHEN excluded.trend <> 0 THEN excluded.trend ELSE candidate_snapshots.trend END,
+         revenue=CASE WHEN excluded.revenue NOT IN ('','$0') THEN excluded.revenue ELSE candidate_snapshots.revenue END,
+         margin=CASE WHEN excluded.margin > 0 THEN excluded.margin ELSE candidate_snapshots.margin END,
+         captured_at=excluded.captured_at`,
       )
       .bind(
         today,

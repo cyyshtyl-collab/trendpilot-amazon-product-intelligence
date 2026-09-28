@@ -35,7 +35,9 @@ async function signature(payload: string, secret: string): Promise<string> {
     false,
     ['sign'],
   );
-  return encode(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload)));
+  return encode(
+    await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload)),
+  );
 }
 
 function safeEqual(left: string, right: string): boolean {
@@ -50,11 +52,19 @@ function safeEqual(left: string, right: string): boolean {
 function validAdminCredentials(username: string, password: string): boolean {
   const current = config();
   if (!current.username || !current.password) return false;
-  return safeEqual(username, current.username) && safeEqual(password, current.password);
+  return (
+    safeEqual(username, current.username) &&
+    safeEqual(password, current.password)
+  );
 }
 
-async function verifyPassword(password: string, saltHex: string, hashHex: string): Promise<boolean> {
-  if (!/^[a-f0-9]{32}$/i.test(saltHex) || !/^[a-f0-9]{64}$/i.test(hashHex)) return false;
+async function verifyPassword(
+  password: string,
+  saltHex: string,
+  hashHex: string,
+): Promise<boolean> {
+  if (!/^[a-f0-9]{32}$/i.test(saltHex) || !/^[a-f0-9]{64}$/i.test(hashHex))
+    return false;
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(password),
@@ -73,7 +83,9 @@ async function verifyPassword(password: string, saltHex: string, hashHex: string
     256,
   );
   return safeEqual(
-    [...new Uint8Array(derived)].map((byte) => byte.toString(16).padStart(2, '0')).join(''),
+    [...new Uint8Array(derived)]
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join(''),
     hashHex.toLowerCase(),
   );
 }
@@ -85,20 +97,36 @@ export async function authenticateUser(
   password: string,
 ): Promise<UserIdentity | null> {
   const normalized = username.trim().toLowerCase();
-  if (!/^[a-z0-9_-]{3,32}$/.test(normalized) || password.length > 128) return null;
-  if (validAdminCredentials(normalized, password)) return { username: normalized, role: 'admin' };
+  if (!/^[a-z0-9_-]{3,32}$/.test(normalized) || password.length > 128)
+    return null;
+  if (validAdminCredentials(normalized, password))
+    return { username: normalized, role: 'admin' };
   const user = await database
     .prepare(
       "SELECT username,password_hash,password_salt,role FROM app_users WHERE username=? AND status='active' LIMIT 1",
     )
     .bind(normalized)
-    .first<{ username: string; password_hash: string; password_salt: string; role: string }>();
-  if (!user || !(await verifyPassword(password, user.password_salt, user.password_hash))) return null;
-  return { username: user.username, role: user.role === 'admin' ? 'admin' : 'member' };
+    .first<{
+      username: string;
+      password_hash: string;
+      password_salt: string;
+      role: string;
+    }>();
+  if (
+    !user ||
+    !(await verifyPassword(password, user.password_salt, user.password_hash))
+  )
+    return null;
+  return {
+    username: user.username,
+    role: user.role === 'admin' ? 'admin' : 'member',
+  };
 }
 
 /** Creates a signed, time-limited administrator session token. */
-export async function createSessionToken(identity: UserIdentity): Promise<string> {
+export async function createSessionToken(
+  identity: UserIdentity,
+): Promise<string> {
   const { secret } = config();
   if (!secret || secret.length < 32) throw new Error('会话密钥未配置');
   const expiresAt = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
@@ -106,19 +134,39 @@ export async function createSessionToken(identity: UserIdentity): Promise<string
   return `${payload}.${await signature(payload, secret)}`;
 }
 
-/** Verifies the current signed administrator session and its expiry. */
-export async function authorized(): Promise<boolean> {
+/** Returns the verified current identity, or null for missing/expired sessions. */
+export async function currentIdentity(): Promise<UserIdentity | null> {
   const { secret } = config();
-  if (!secret || secret.length < 32) return false;
+  if (!secret || secret.length < 32) return null;
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!token) return false;
+  if (!token) return null;
   const [role, username, expiry, suppliedSignature] = token.split('.');
-  if (!['admin', 'member'].includes(role) || !username || !expiry || !suppliedSignature) return false;
+  if (
+    !['admin', 'member'].includes(role) ||
+    !username ||
+    !expiry ||
+    !suppliedSignature
+  )
+    return null;
   const expiresAt = Number(expiry);
-  if (!Number.isInteger(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000))
-    return false;
+  if (
+    !Number.isInteger(expiresAt) ||
+    expiresAt <= Math.floor(Date.now() / 1000)
+  )
+    return null;
   const expected = await signature(`${role}.${username}.${expiry}`, secret);
-  return safeEqual(suppliedSignature, expected);
+  if (!safeEqual(suppliedSignature, expected)) return null;
+  return { username, role: role === 'admin' ? 'admin' : 'member' };
+}
+
+/** Verifies that the current request owns any active internal session. */
+export async function authorized(): Promise<boolean> {
+  return Boolean(await currentIdentity());
+}
+
+/** Verifies that the current request owns an administrator session. */
+export async function authorizedAdmin(): Promise<boolean> {
+  return (await currentIdentity())?.role === 'admin';
 }
 
 /** Returns the secure cookie lifetime shared by login and validation. */

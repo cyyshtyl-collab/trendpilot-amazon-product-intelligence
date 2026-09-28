@@ -34,7 +34,11 @@ class PreparedStatement {
 
   private async query<T extends QueryResultRow>(returnRows = false) {
     let text = postgresSql(this.sql);
-    if (returnRows && /^\s*insert\s+/i.test(text) && !/\breturning\b/i.test(text)) {
+    if (
+      returnRows &&
+      /^\s*insert\s+/i.test(text) &&
+      !/\breturning\b/i.test(text)
+    ) {
       text += ' RETURNING *';
     }
     const executor = this.client ?? connectionPool();
@@ -63,7 +67,11 @@ class PreparedStatement {
   /** Returns every selected row using the existing D1 response shape. */
   async all<T>(): Promise<D1Result<T>> {
     const result = await this.query<QueryResultRow>();
-    return { success: true, results: result.rows as T[], meta: {} } as D1Result<T>;
+    return {
+      success: true,
+      results: result.rows as T[],
+      meta: {},
+    } as D1Result<T>;
   }
 
   /** Returns the first selected row, or null when no row matches. */
@@ -81,7 +89,9 @@ class PostgresDatabase {
   }
 
   /** Executes prepared statements atomically and rolls back on failure. */
-  async batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]> {
+  async batch<T = unknown>(
+    statements: D1PreparedStatement[],
+  ): Promise<D1Result<T>[]> {
     if (!statements.length) return [];
     const client = await connectionPool().connect();
     try {
@@ -110,4 +120,3 @@ class PostgresDatabase {
 }
 
 export const database = new PostgresDatabase() as unknown as D1Database;
-

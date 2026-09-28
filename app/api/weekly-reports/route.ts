@@ -1,17 +1,13 @@
 import { env } from '@/lib/runtime';
-import { authorized } from '@/lib/auth';
+import { authorized, authorizedAdmin } from '@/lib/auth';
+import {
+  averageKnown,
+  rankDecisionCandidates,
+  type DecisionCandidateInput,
+  type RankedDecisionCandidate,
+} from '@/lib/decision-report';
 
-type CandidateRow = {
-  id: number;
-  name: string;
-  category: string;
-  market: string;
-  score: number;
-  verdict: string;
-  trend: number;
-  margin: number;
-  selling_point: string;
-};
+type CandidateRow = DecisionCandidateInput & { sellingPoint: string };
 
 function db(): D1Database {
   return (env as unknown as { DB: D1Database }).DB;
@@ -24,35 +20,58 @@ function weekStart(): string {
   return today.toISOString().slice(0, 10);
 }
 
-function deduplicateRows(rows: CandidateRow[]): CandidateRow[] {
-  const unique = new Map<string, CandidateRow>();
-  for (const row of rows) {
-    const key = `${row.market}|${row.name.trim().toLocaleLowerCase('zh-CN')}`;
-    const current = unique.get(key);
-    if (!current || row.score > current.score || (row.score === current.score && row.id > current.id)) {
-      unique.set(key, row);
-    }
-  }
-  return [...unique.values()].sort(
-    (left, right) => right.score - left.score || right.id - left.id,
-  );
-}
-
-function buildMarkdown(rows: CandidateRow[], week: string): string {
+function buildMarkdown(
+  rows: RankedDecisionCandidate<CandidateRow>[],
+  week: string,
+): string {
   const highPotential = rows.filter((item) => item.verdict === '通过');
   const watch = rows.filter((item) => item.verdict === '观察');
   const shortlist = rows.filter((item) => item.verdict !== '淘汰').slice(0, 10);
   const table = shortlist
     .map(
       (item, index) =>
-        `| ${index + 1} | ${item.name} | ${item.category} | ${item.market} | ${item.score}/25 | ${item.trend}% | ${item.margin}% | ${item.verdict} |`,
+        `| ${index + 1} | ${item.name} | ${item.asin} | ${item.category} | ${item.score}/25 | ${item.decisionScore}/100 | ${item.rating} | ${item.reviews} | ${item.verdict} |`,
     )
     .join('\n');
   const sellingPoints = highPotential
     .slice(0, 5)
-    .map((item) => `- **${item.name}**：${item.selling_point || '等待 AI 生成卖点'}`)
+    .map(
+      (item) =>
+        `- **${item.name}**：${item.sellingPoint || '等待 AI 生成卖点'}`,
+    )
     .join('\n');
-  return `# TrendPilot 亚马逊选品周报\n\n周期开始：${week}\n\n## 管理摘要\n\n- 追踪产品：${rows.length} 个\n- 建议推进：${highPotential.length} 个\n- 继续观察：${watch.length} 个\n- 建议淘汰：${rows.filter((item) => item.verdict === '淘汰').length} 个\n\n## 优先候选\n\n| 排名 | 产品 | 类目 | 站点 | 评分 | 趋势 | 毛利率 | 结论 |\n| --- | --- | --- | --- | ---: | ---: | ---: | --- |\n${table || '| - | 暂无候选 | - | - | - | - | - | - |'}\n\n## Selling Point 初稿\n\n${sellingPoints || '- 暂无通过产品'}\n\n## 本周行动\n\n1. 为高分候选核验供应链报价、包装尺寸和合规要求。\n2. 为观察候选补充 Amazon 评论和关键词数据。\n3. 对趋势转弱或毛利不足的候选暂停投入。\n`;
+  return [
+    '# TrendPilot 亚马逊选品周报',
+    '',
+    `周期开始：${week}`,
+    '',
+    '## 管理摘要',
+    '',
+    `- 最终决策产品：${rows.length} 个`,
+    `- 建议推进：${highPotential.length} 个`,
+    `- 继续观察：${watch.length} 个`,
+    `- 趋势平均值：${averageKnown(rows.map((item) => item.trend)).toFixed(1)}%`,
+    `- 毛利率平均值：${averageKnown(rows.map((item) => item.margin)).toFixed(1)}%`,
+    '',
+    '> 口径：仅统计具有有效 ASIN，且价格、BSR、评分、评论数、趋势和毛利全部具备真实数据的商品。',
+    '',
+    '## 优先候选',
+    '',
+    '| 排名 | 产品 | ASIN | 类目 | AI 评分 | 决策分 | 评分 | 评论数 | 结论 |',
+    '| --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |',
+    table || '| - | 暂无最终评分就绪商品 | - | - | - | - | - | - | - |',
+    '',
+    '## Selling Point 初稿',
+    '',
+    sellingPoints || '- 暂无通过产品',
+    '',
+    '## 本周行动',
+    '',
+    '1. 优先核验决策分最高商品的供应链报价、包装尺寸和合规要求。',
+    '2. 为缺少趋势、关键词或毛利数据的候选补采真实数据。',
+    '3. 观察候选继续追踪一个采集周期，暂缓备货。',
+    '',
+  ].join('\n');
 }
 
 /** Lists saved weekly decision reports. */
@@ -83,18 +102,37 @@ export async function GET(): Promise<Response> {
 
 /** Generates or refreshes the current week's persisted management report. */
 export async function POST(): Promise<Response> {
-  if (!(await authorized()))
-    return Response.json({ error: '未登录' }, { status: 401 });
+  if (!(await authorizedAdmin()))
+    return Response.json({ error: '仅管理员可生成正式周报' }, { status: 403 });
   const candidates = await db()
     .prepare(
-      "SELECT id,name,category,market,score,verdict,trend,margin,selling_point FROM candidates WHERE category<>'待归类' OR asin IS NOT NULL ORDER BY score DESC,id DESC",
+      "SELECT id,name,asin,category,market,score,verdict,trend,margin,price,bsr,rating,reviews,search_volume,selling_point FROM candidates WHERE asin IS NOT NULL ORDER BY score DESC,id DESC",
     )
-    .all<CandidateRow>();
-  const rows = deduplicateRows(candidates.results);
+    .all<Record<string, unknown>>();
+  const normalized = candidates.results.map((row) => ({
+    id: Number(row.id),
+    name: String(row.name),
+    asin: String(row.asin),
+    category: String(row.category),
+    market: String(row.market),
+    score: Number(row.score),
+    verdict: String(row.verdict),
+    trend: Number(row.trend),
+    margin: Number(row.margin),
+    price: String(row.price),
+    bsr: Number(row.bsr),
+    rating: Number(row.rating),
+    reviews: Number(row.reviews),
+    searchVolume: Number(row.search_volume),
+    sellingPoint: String(row.selling_point ?? ''),
+  })) satisfies CandidateRow[];
+  const rows = rankDecisionCandidates(normalized);
   const week = weekStart();
   const now = new Date().toISOString();
   const markdown = buildMarkdown(rows, week);
-  const highPotentialCount = rows.filter((item) => item.verdict === '通过').length;
+  const highPotentialCount = rows.filter(
+    (item) => item.verdict === '通过',
+  ).length;
   const watchCount = rows.filter((item) => item.verdict === '观察').length;
   await db()
     .prepare(

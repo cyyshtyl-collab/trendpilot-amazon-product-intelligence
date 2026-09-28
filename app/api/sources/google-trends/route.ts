@@ -64,7 +64,8 @@ export async function POST(request: Request): Promise<Response> {
     const finishedAt = await persistGoogleTrends(db(), geo, items, startedAt);
     return Response.json({ items, geo, finishedAt });
   } catch (error) {
-    const message = error instanceof Error ? error.message.slice(0, 500) : '未知错误';
+    const message =
+      error instanceof Error ? error.message.slice(0, 500) : '未知错误';
     const finishedAt = new Date().toISOString();
     await db()
       .prepare(
@@ -72,6 +73,9 @@ export async function POST(request: Request): Promise<Response> {
       )
       .bind('Google Trends', geo, 'failed', 0, message, startedAt, finishedAt)
       .run();
-    return Response.json({ error: 'Google Trends 暂时不可用，请稍后重试' }, { status: 502 });
+    return Response.json(
+      { error: 'Google Trends 暂时不可用，请稍后重试' },
+      { status: 502 },
+    );
   }
 }

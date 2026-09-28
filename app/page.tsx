@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   ArrowUpRight,
@@ -28,7 +28,12 @@ import {
 } from 'lucide-react';
 import { CATEGORY_GROUPS, PRODUCT_CATEGORIES } from '@/lib/categories';
 import { parseCandidateFeed } from '@/lib/candidate-feed';
+import { calculateGrossMargin, parseMoney } from '@/lib/margin';
 import readXlsxFile from 'read-excel-file';
+import {
+  averageKnown,
+  rankDecisionCandidates,
+} from '@/lib/decision-report';
 import {
   Area,
   AreaChart,
@@ -113,6 +118,66 @@ type SourceRun = {
   errorMessage: string;
   startedAt: string;
   finishedAt: string;
+};
+type DataQuality = {
+  total: number;
+  fullyComplete: number;
+  decisionReady: number;
+  finalScoreReady: number;
+  nearReady: number;
+  fresh: number;
+  stale: number;
+  missingPrice: number;
+  missingRating: number;
+  missingBsr: number;
+  missingReviews: number;
+  missingTrend: number;
+  missingMargin: number;
+  completeness: number;
+};
+type QualityQueueItem = {
+  id: number;
+  name: string;
+  asin: string;
+  category: string;
+  market: string;
+  score: number;
+  bsr: number;
+  trend: number;
+  margin: number;
+  verificationSource: string;
+  verifiedDate: string;
+  verificationOwner: string;
+  taskAssignee: string;
+  taskStatus: '' | 'pending' | 'active' | 'completed';
+  taskDueDate: string;
+  missing: string[];
+  updatedAt: string;
+};
+type DataVerification = {
+  id: number;
+  fields: string;
+  source: string;
+  verifiedDate: string;
+  owner: string;
+  createdAt: string;
+};
+type CompletionTask = {
+  candidateId: number;
+  name: string;
+  asin: string;
+  assignee: string;
+  status: 'pending' | 'active' | 'completed';
+  dueDate: string;
+  overdue: boolean;
+  updatedAt: string;
+};
+type CompletionTaskSummary = {
+  total: number;
+  pending: number;
+  active: number;
+  completed: number;
+  overdue: number;
 };
 type TrendSignal = {
   id: number;
@@ -249,7 +314,7 @@ const stages = [
   {
     number: '01',
     name: '数据采集',
-    detail: '卖家精灵 · Octoparse',
+    detail: '免费趋势 · ASIN 候选池',
     icon: Database,
   },
   {
@@ -294,27 +359,41 @@ const collectionSources: CollectionSource[] = [
     status: 'ready',
   },
   {
-    id: 'tiktok',
-    name: 'TikTok Creative Center',
-    scope: '热视频 · 话题 · 广告',
-    mode: '网页数据',
-    status: 'setup',
+    id: 'amazon-asin',
+    name: 'Amazon ASIN',
+    scope: '商品链接 · ASIN · 人工复核',
+    mode: '链接 / ASIN',
+    status: 'ready',
   },
   {
     id: 'google-trends',
     name: 'Google Trends',
     scope: '搜索趋势 · 地区热度',
-    mode: '网页数据 / CSV',
+    mode: '每日自动',
     status: 'ready',
   },
   {
-    id: 'custom',
-    name: '自定义渠道',
-    scope: '供应商 · 线下调研 · 其他',
-    mode: '标准 CSV',
+    id: 'tiktok',
+    name: 'TikTok Creative Center',
+    scope: '热视频 · 话题 · 广告',
+    mode: '免费线索',
+    status: 'setup',
+  },
+  {
+    id: 'supplier-research',
+    name: '供应链调研',
+    scope: '报价 · 打样 · 合规',
+    mode: '团队录入',
     status: 'ready',
   },
 ];
+
+/** Maps supported collection-source identifiers to persisted provenance values. */
+function dataOriginForSource(source: string): 'automated_feed' | 'manual' {
+  return source === 'octoparse' || source === 'sellersprite'
+    ? 'automated_feed'
+    : 'manual';
+}
 
 /** Returns a stable status class for supported product verdicts. */
 function verdictClass(verdict: Verdict): string {
@@ -323,13 +402,12 @@ function verdictClass(verdict: Verdict): string {
   return 'status status-reject';
 }
 
-/** Maps supported collection-source identifiers to persisted provenance values. */
-function dataOriginForSource(source: string): 'automated_feed' | 'manual' {
-  return source === 'octoparse' ? 'automated_feed' : 'manual';
-}
-
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{
+    username: string;
+    role: 'admin' | 'member';
+  } | null>(null);
   const [loginError, setLoginError] = useState('');
   const [selectedId, setSelectedId] = useState(1);
   const [activeStage, setActiveStage] = useState(2);
@@ -340,15 +418,53 @@ export default function Home() {
   const [categoryGroupFilter, setCategoryGroupFilter] = useState('全部分组');
   const [sortBy, setSortBy] = useState<'score' | 'trend' | 'margin'>('score');
   const [query, setQuery] = useState('');
+  const [dataScope, setDataScope] = useState<'decision-ready' | 'all'>(
+    'decision-ready',
+  );
+  const [visibleCandidateCount, setVisibleCandidateCount] = useState(50);
   const [editorMode, setEditorMode] = useState<'new' | 'edit' | null>(null);
+  const [marginDraft, setMarginDraft] = useState('0');
+  const [marginCosts, setMarginCosts] = useState({
+    sellingPrice: '',
+    productCost: '',
+    inboundFreight: '',
+    platformFees: '',
+    otherCosts: '',
+  });
+  const [showAsinIntake, setShowAsinIntake] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [selectedSource, setSelectedSource] = useState('sellersprite');
+  const [selectedSource, setSelectedSource] = useState('amazon-asin');
+  const [intakeCategory, setIntakeCategory] = useState('未分类');
+  const [intakeMarket, setIntakeMarket] = useState('美国站');
+  const [asinInput, setAsinInput] = useState('');
   const [importCategory, setImportCategory] = useState('未分类');
   const [pastedCsv, setPastedCsv] = useState('');
   const [importFileName, setImportFileName] = useState('');
   const [sourceSyncing, setSourceSyncing] = useState(false);
   const [sourceMessage, setSourceMessage] = useState('');
   const [sourceRuns, setSourceRuns] = useState<SourceRun[]>([]);
+  const [dataQuality, setDataQuality] = useState<DataQuality | null>(null);
+  const [qualityQueue, setQualityQueue] = useState<QualityQueueItem[]>([]);
+  const [qualityDrafts, setQualityDrafts] = useState<
+    Record<number, { bsr: string; trend: string; margin: string }>
+  >({});
+  const [qualitySaving, setQualitySaving] = useState(false);
+  const [qualityMessage, setQualityMessage] = useState('');
+  const [verificationMeta, setVerificationMeta] = useState({
+    source: 'Amazon 商品页 / Google Trends / 供应链报价',
+    verifiedDate: new Date().toISOString().slice(0, 10),
+    owner: 'admin',
+  });
+  const [dataVerifications, setDataVerifications] = useState<DataVerification[]>([]);
+  const [showAllVerifications, setShowAllVerifications] = useState(false);
+  const [taskAssignment, setTaskAssignment] = useState({
+    assignee: 'admin',
+    dueDate: new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10),
+  });
+  const [taskSaving, setTaskSaving] = useState(false);
+  const [completionTasks, setCompletionTasks] = useState<CompletionTask[]>([]);
+  const [completionTaskSummary, setCompletionTaskSummary] =
+    useState<CompletionTaskSummary>({ total: 0, pending: 0, active: 0, completed: 0, overdue: 0 });
   const [trendSignals, setTrendSignals] = useState<TrendSignal[]>([]);
   const [promotingSignalId, setPromotingSignalId] = useState<number | null>(
     null,
@@ -356,7 +472,12 @@ export default function Home() {
   const [screeningSignals, setScreeningSignals] = useState(false);
   const [weeklyReports, setWeeklyReports] = useState<WeeklyReport[]>([]);
   const [reportGenerating, setReportGenerating] = useState(false);
+  const [intakeMessage, setIntakeMessage] = useState('');
   const [importMessage, setImportMessage] = useState('');
+  const [intakeResult, setIntakeResult] = useState<{
+    accepted: number;
+    rejected: string[];
+  } | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState('');
   const [showReport, setShowReport] = useState(false);
@@ -384,6 +505,53 @@ export default function Home() {
   const [alertNotes, setAlertNotes] = useState<Record<string, string>>({});
   const selected =
     candidates.find((item) => item.id === selectedId) ?? candidates[0];
+  const marginResult = useMemo(
+    () =>
+      calculateGrossMargin({
+        sellingPrice: Number(marginCosts.sellingPrice),
+        productCost: Number(marginCosts.productCost),
+        inboundFreight: Number(marginCosts.inboundFreight),
+        platformFees: Number(marginCosts.platformFees),
+        otherCosts: Number(marginCosts.otherCosts),
+      }),
+    [marginCosts],
+  );
+
+  useEffect(() => {
+    if (!editorMode) return;
+    const price = editorMode === 'edit' ? parseMoney(selected?.price) : 0;
+    setMarginDraft(
+      editorMode === 'edit' && Number.isFinite(selected?.margin)
+        ? String(selected.margin)
+        : '0',
+    );
+    setMarginCosts({
+      sellingPrice: price ? String(price) : '',
+      productCost: '',
+      inboundFreight: '',
+      platformFees: '',
+      otherCosts: '',
+    });
+  }, [editorMode, selected?.id, selected?.margin, selected?.price]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !selected?.id) return;
+    const controller = new AbortController();
+    setShowAllVerifications(false);
+    fetch(`/api/data-verifications?candidateId=${selected.id}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) return { verifications: [] };
+        return (await response.json()) as { verifications?: DataVerification[] };
+      })
+      .then((result) => setDataVerifications(result.verifications ?? []))
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setDataVerifications([]);
+      });
+    return () => controller.abort();
+  }, [isAuthenticated, selected?.id]);
   const isOfficialTrendCandidate = selected?.dataOrigin === 'amazon_official';
   const isCategoryExpansionCandidate =
     selected?.dataOrigin === 'category_expansion';
@@ -419,6 +587,15 @@ export default function Home() {
       ? [...groups, { label: '其他分类', categories: other }]
       : groups;
   }, [candidates]);
+  const qualifiedCandidates = useMemo(
+    () => rankDecisionCandidates(candidates),
+    [candidates],
+  );
+  const qualifiedCandidateIds = useMemo(
+    () => new Set(qualifiedCandidates.map((item) => item.id)),
+    [qualifiedCandidates],
+  );
+  const deferredQuery = useDeferredValue(query.trim().toLowerCase());
   const filtered = useMemo(() => {
     const sortValue = (item: Candidate) =>
       sortBy === 'trend'
@@ -426,7 +603,11 @@ export default function Home() {
         : sortBy === 'margin'
           ? item.margin
           : item.score;
-    return candidates
+    const scopedCandidates =
+      dataScope === 'decision-ready'
+        ? candidates.filter((item) => qualifiedCandidateIds.has(item.id))
+        : candidates;
+    return scopedCandidates
       .filter(
         (item) =>
           (filter === '全部' || item.verdict === filter) &&
@@ -437,7 +618,7 @@ export default function Home() {
                 (category) => category.category === item.category,
               )) &&
           (categoryFilter === '全部类目' || item.category === categoryFilter) &&
-          item.name.toLowerCase().includes(query.trim().toLowerCase()),
+          item.name.toLowerCase().includes(deferredQuery),
       )
       .sort((left, right) => sortValue(right) - sortValue(left));
   }, [
@@ -445,16 +626,24 @@ export default function Home() {
     categoryFilter,
     categoryGroupFilter,
     categoryGroups,
+    dataScope,
+    deferredQuery,
     filter,
-    query,
+    qualifiedCandidateIds,
     sortBy,
   ]);
+  const visibleCandidates = useMemo(
+    () => filtered.slice(0, visibleCandidateCount),
+    [filtered, visibleCandidateCount],
+  );
   const analysis = useMemo(() => {
     const average = (values: number[]) =>
       values.length
         ? values.reduce((sum, value) => sum + value, 0) / values.length
         : 0;
-    const passed = candidates.filter((item) => item.verdict === '通过');
+    const analysisCandidates =
+      dataScope === 'decision-ready' ? qualifiedCandidates : candidates;
+    const passed = analysisCandidates.filter((item) => item.verdict === '通过');
     const baseline = Math.max(30, 76 - Math.max(-20, selected?.trend ?? 0));
     const lift = (selected?.trend ?? 0) / 5;
     const trendData = ['4月', '5月', '6月', '7月', '8月', '9月'].map(
@@ -466,23 +655,28 @@ export default function Home() {
     );
     return {
       highPotential: passed.length,
-      tracked: candidates.length,
-      categories: new Set(candidates.map((item) => item.category)).size,
-      averageTrend: average(candidates.map((item) => item.trend)),
+      tracked: analysisCandidates.length,
+      categories: new Set(analysisCandidates.map((item) => item.category)).size,
+      averageTrend: averageKnown(analysisCandidates.map((item) => item.trend)),
       passedMargin: average(passed.map((item) => item.margin)),
-      rising: candidates.filter((item) => item.trend >= 15).length,
-      cooling: candidates.filter((item) => item.trend < 0).length,
+      rising: analysisCandidates.filter((item) => item.trend >= 15).length,
+      cooling: analysisCandidates.filter((item) => item.trend < 0).length,
       trendData,
     };
-  }, [candidates, selected]);
+  }, [candidates, dataScope, qualifiedCandidates, selected]);
   const reportCandidates = useMemo(
-    () =>
-      [...candidates]
-        .filter((item) => item.verdict !== '淘汰')
-        .sort((left, right) => right.score - left.score)
-        .slice(0, 8),
-    [candidates],
+    () => qualifiedCandidates.filter((item) => item.verdict !== '淘汰').slice(0, 8),
+    [qualifiedCandidates],
   );
+  const reportAnalysis = useMemo(() => {
+    const passed = qualifiedCandidates.filter((item) => item.verdict === '通过');
+    return {
+      tracked: qualifiedCandidates.length,
+      highPotential: passed.length,
+      averageTrend: averageKnown(qualifiedCandidates.map((item) => item.trend)),
+      passedMargin: averageKnown(passed.map((item) => item.margin)),
+    };
+  }, [qualifiedCandidates]);
   const hasRealHistory = snapshots.length >= 2;
   const chartData = useMemo(() => {
     if (!hasRealHistory) return analysis.trendData;
@@ -503,22 +697,59 @@ export default function Home() {
     const rows = reportCandidates
       .map(
         (item, index) =>
-          `| ${index + 1} | ${item.name} | ${item.category} | ${item.score}/25 | ${item.trend}% | ${item.margin}% | ${item.verdict} |`,
+          `| ${index + 1} | ${item.name} | ${item.asin} | ${item.category} | ${item.score}/25 | ${item.decisionScore}/100 | ${item.rating ?? 0} | ${item.reviews} | ${item.verdict} |`,
       )
       .join('\n');
-    return `# TrendPilot 亚马逊选品周报\n\n生成时间：${new Date().toLocaleDateString('zh-CN')}\n\n## 决策摘要\n\n- 追踪产品：${analysis.tracked} 个\n- 高潜候选：${analysis.highPotential} 个\n- 平均趋势增幅：${analysis.averageTrend.toFixed(1)}%\n- 通过产品平均毛利率：${analysis.passedMargin.toFixed(1)}%\n\n## 候选清单\n\n| 排名 | 产品 | 类目 | 评分 | 趋势 | 毛利率 | 结论 |\n| --- | --- | --- | ---: | ---: | ---: | --- |\n${rows || '| - | 暂无通过或观察产品 | - | - | - | - | - |'}\n\n## 本周建议\n\n1. 优先验证评分最高产品的供应链报价和样品质量。\n2. 对趋势增幅超过 15% 的产品补充关键词与社媒数据。\n3. 对观察产品继续追踪一个采集周期，暂缓备货。\n\n> 说明：当前评分为可解释预评分，接入大模型后可追加评论语义与卖点论证。\n`;
-  }, [analysis, reportCandidates]);
+    return [
+      '# TrendPilot 亚马逊选品周报',
+      '',
+      `生成时间：${new Date().toLocaleDateString('zh-CN')}`,
+      '',
+      '## 决策摘要',
+      '',
+      `- 最终决策产品：${reportAnalysis.tracked} 个`,
+      `- 高潜候选：${reportAnalysis.highPotential} 个`,
+      `- 趋势平均值：${reportAnalysis.averageTrend.toFixed(1)}%`,
+      `- 通过产品毛利率：${reportAnalysis.passedMargin.toFixed(1)}%`,
+      '',
+      '> 口径：仅统计具有有效 ASIN，且价格、BSR、评分、评论数、趋势和毛利全部具备真实数据的商品。',
+      '',
+      '## 候选清单',
+      '',
+      '| 排名 | 产品 | ASIN | 类目 | AI 评分 | 决策分 | 评分 | 评论数 | 结论 |',
+      '| --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |',
+      rows || '| - | 暂无最终评分就绪商品 | - | - | - | - | - | - | - |',
+      '',
+      '## 本周建议',
+      '',
+      '1. 优先验证决策分最高产品的供应链报价和样品质量。',
+      '2. 为缺少趋势、关键词或毛利数据的候选补充真实数据。',
+      '3. 观察产品继续追踪一个采集周期，暂缓备货。',
+      '',
+    ].join('\n');
+  }, [reportAnalysis, reportCandidates]);
   useEffect(() => {
     void fetch('/api/auth')
-      .then(
-        (response) => response.json() as Promise<{ authenticated?: boolean }>,
+      .then((response) =>
+        response.json() as Promise<{
+          authenticated?: boolean;
+          username?: string | null;
+          role?: 'admin' | 'member' | null;
+        }>,
       )
       .then((result) => {
         setIsAuthenticated(result.authenticated === true);
+        setCurrentUser(
+          result.authenticated && result.username && result.role
+            ? { username: result.username, role: result.role }
+            : null,
+        );
         if (result.authenticated) {
           void loadCandidates();
           void loadAiStatus();
           void loadSourceRuns();
+          void loadDataQuality();
+          void loadCompletionTasks();
           void loadTrendSignals();
           void loadWeeklyReports();
         }
@@ -539,6 +770,125 @@ export default function Home() {
     if (!response.ok) return;
     const result = (await response.json()) as { runs?: SourceRun[] };
     setSourceRuns(result.runs ?? []);
+  }
+
+  /** Loads one consistent decision-data audit and its prioritized completion queue. */
+  async function loadDataQuality(): Promise<void> {
+    const response = await fetch('/api/data-quality');
+    if (!response.ok) return;
+    const result = (await response.json()) as {
+      report?: DataQuality;
+      queue?: QualityQueueItem[];
+    };
+    setDataQuality(result.report ?? null);
+    const queue = result.queue ?? [];
+    setQualityQueue(queue);
+    setQualityDrafts(
+      Object.fromEntries(
+        queue.map((item) => [
+          item.id,
+          {
+            bsr: item.bsr > 0 ? String(item.bsr) : '',
+            trend: item.trend !== 0 ? String(item.trend) : '',
+            margin: item.margin !== 0 ? String(item.margin) : '',
+          },
+        ]),
+      ),
+    );
+  }
+
+  /** Loads the team completion board and overdue workload. */
+  async function loadCompletionTasks(): Promise<void> {
+    const response = await fetch('/api/completion-tasks');
+    if (!response.ok) return;
+    const result = (await response.json()) as {
+      summary?: CompletionTaskSummary;
+      tasks?: CompletionTask[];
+    };
+    setCompletionTaskSummary(
+      result.summary ?? { total: 0, pending: 0, active: 0, completed: 0, overdue: 0 },
+    );
+    setCompletionTasks(result.tasks ?? []);
+  }
+
+  /** Saves entered decision fields for the visible completion queue. */
+  async function saveQualityQueue(): Promise<void> {
+    const updates = qualityQueue.slice(0, 8).flatMap((item) => {
+      const draft = qualityDrafts[item.id];
+      if (!draft) return [];
+      const update: { id: number; bsr?: number; trend?: number; margin?: number } = {
+        id: item.id,
+      };
+      if (draft.bsr.trim()) update.bsr = Number(draft.bsr);
+      if (draft.trend.trim()) update.trend = Number(draft.trend);
+      if (draft.margin.trim()) update.margin = Number(draft.margin);
+      return Object.keys(update).length > 1 ? [update] : [];
+    });
+    if (!updates.length) {
+      setQualityMessage('请至少填写一个 BSR、趋势或毛利字段');
+      return;
+    }
+    setQualitySaving(true);
+    setQualityMessage('正在保存并生成今日快照…');
+    try {
+      const response = await fetch('/api/data-quality', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates, ...verificationMeta }),
+      });
+      const result = (await response.json()) as { error?: string; updated?: number };
+      if (!response.ok) throw new Error(result.error ?? '保存失败');
+      await Promise.all([loadCandidates(), loadDataQuality()]);
+      setQualityMessage(`已保存 ${result.updated ?? updates.length} 条，并更新最终评分就绪状态`);
+    } catch (error) {
+      setQualityMessage(error instanceof Error ? error.message : '保存失败');
+    } finally {
+      setQualitySaving(false);
+    }
+  }
+
+  /** Assigns the visible priority queue to one accountable owner. */
+  async function assignQualityTasks(): Promise<void> {
+    const candidateIds = qualityQueue.slice(0, 8).map((item) => item.id);
+    if (!candidateIds.length) return;
+    setTaskSaving(true);
+    setQualityMessage('正在分派本页补全任务…');
+    try {
+      const response = await fetch('/api/completion-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidateIds, ...taskAssignment }),
+      });
+      const result = (await response.json()) as { error?: string; assigned?: number };
+      if (!response.ok) throw new Error(result.error ?? '任务分派失败');
+      await Promise.all([loadDataQuality(), loadCompletionTasks()]);
+      setQualityMessage(`已向 ${taskAssignment.assignee} 分派 ${result.assigned ?? candidateIds.length} 个任务`);
+    } catch (error) {
+      setQualityMessage(error instanceof Error ? error.message : '任务分派失败');
+    } finally {
+      setTaskSaving(false);
+    }
+  }
+
+  /** Updates one assigned task without mutating candidate metrics. */
+  async function updateQualityTask(candidateId: number, status: 'pending' | 'active' | 'completed'): Promise<void> {
+    const response = await fetch('/api/completion-tasks', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidateId, status }),
+    });
+    const result = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      setQualityMessage(result.error ?? '任务状态更新失败');
+      return;
+    }
+    await Promise.all([loadDataQuality(), loadCompletionTasks()]);
+    setQualityMessage('任务状态已更新');
+  }
+
+  /** Downloads the complete BSR, trend and margin task for verified re-import. */
+  function downloadBsrTask(): void {
+    window.location.assign('/api/data-quality/export');
   }
 
   /** Loads persisted public-market signals for review before candidate creation. */
@@ -855,14 +1205,13 @@ export default function Home() {
     setSelectedId(remaining[0].id);
   }
 
-  /** Parses supported marketplace data and persists normalized candidates in safe batches. */
+  /** Parses collector CSV and persists normalized candidates in bounded batches. */
   async function importCsvText(csvText: string, skippedRows = 0): Promise<void> {
     setImportMessage('正在读取并校验数据…');
     try {
       const parsed = parseCandidateFeed(csvText);
       const imported = parsed.map((row) => {
         const scores: Candidate['scores'] = [3, 3, 3, 3, 3];
-        const score = scores.reduce((sum, value) => sum + value, 0);
         return {
           name: row.name,
           asin: row.asin,
@@ -880,31 +1229,29 @@ export default function Home() {
           reviewGrowth: 0,
           reviewText: row.reviewText,
           scores,
-          score,
-          verdict: score >= 18 ? '通过' : score >= 15 ? '观察' : '淘汰',
+          score: 15,
+          verdict: '观察' as const,
           signals: [
             `${collectionSources.find((source) => source.id === selectedSource)?.name ?? '外部渠道'}数据已导入`,
-            '等待下一采集周期更新趋势',
+            '等待趋势和数据质量复核',
           ],
           pains: ['等待 AI 评论摘要分析'],
           sellingPoint: '等待 AI 生成卖点文案',
         } satisfies Omit<Candidate, 'id'>;
       });
       for (let index = 0; index < imported.length; index += 200) {
-        const batch = imported.slice(index, index + 200);
         const response = await fetch('/api/candidates', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(batch),
+          body: JSON.stringify(imported.slice(index, index + 200)),
         });
         const result = (await response.json()) as { error?: string };
         if (!response.ok) throw new Error(result.error ?? '导入失败');
       }
       await loadCandidates();
-      void loadAnalysisRuns();
       setImportMessage(
-        skippedRows > 0
-          ? `已导入 ${imported.length} 条，跳过 ${skippedRows} 条字段不完整的记录`
+        skippedRows
+          ? `已导入 ${imported.length} 条，跳过 ${skippedRows} 条空记录`
           : `已成功导入 ${imported.length} 条候选产品`,
       );
     } catch (error) {
@@ -912,7 +1259,7 @@ export default function Home() {
     }
   }
 
-  /** Reads a bounded CSV or XLSX file and delegates to the shared import pipeline. */
+  /** Reads one bounded CSV or XLSX file and delegates to the shared importer. */
   async function importDataFile(file: File): Promise<void> {
     if (file.size > 5_000_000) {
       setImportMessage('文件超过 5MB，请拆分后再导入');
@@ -924,42 +1271,35 @@ export default function Home() {
       return;
     }
     setImportFileName(file.name);
+    if (extension === 'csv') {
+      await importCsvText(await file.text());
+      return;
+    }
     try {
-      if (extension === 'csv') {
-        await importCsvText(await file.text());
-        return;
-      }
       const rows = await readXlsxFile(file);
-      if (rows.length < 2) throw new Error('XLSX 中没有可导入的数据行');
       const completeRows = rows.filter(
-        (row, index) => index === 0 || String(row[0] ?? '').trim().length > 0,
+        (row, index) => index === 0 || row.some((cell) => String(cell ?? '').trim()),
       );
-      const skippedRows = rows.length - completeRows.length;
-      if (completeRows.length < 2)
-        throw new Error('XLSX 中没有字段完整的商品记录');
+      if (completeRows.length < 2) throw new Error('XLSX 中没有可导入的数据');
       const csvText = completeRows
         .map((row) =>
-          row
-            .map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`)
-            .join(','),
+          row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','),
         )
         .join('\n');
-      await importCsvText(csvText, skippedRows);
+      await importCsvText(csvText, rows.length - completeRows.length);
     } catch (error) {
-      setImportMessage(error instanceof Error ? error.message : '文件读取失败');
+      setImportMessage(error instanceof Error ? error.message : 'XLSX 读取失败');
     }
   }
 
-  /** Handles a file selected through the system file picker. */
-  async function handleDataFileSelect(
-    event: React.ChangeEvent<HTMLInputElement>,
-  ): Promise<void> {
+  /** Handles a collector file selected from the system picker. */
+  async function handleDataFileSelect(event: React.ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = event.target.files?.[0];
     if (file) await importDataFile(file);
     event.target.value = '';
   }
 
-  /** Imports CSV pasted directly from a collector or spreadsheet. */
+  /** Imports CSV text pasted from a collector or spreadsheet. */
   async function handlePastedCsvImport(): Promise<void> {
     if (!pastedCsv.trim()) {
       setImportMessage('请先粘贴 CSV 内容');
@@ -968,15 +1308,13 @@ export default function Home() {
     await importCsvText(pastedCsv);
   }
 
-  /** Downloads the canonical CSV header and one example row. */
+  /** Downloads the canonical collector template. */
   function downloadCsvTemplate(): void {
     const template = [
-      'ASIN,产品名称,类目,站点,价格,BSR,评分,评论数,评论增速,关键词搜索量,趋势增幅,月销售额,毛利率,差评内容,需求真实性,竞争可切入度,差异化空间,供应链可控性,双线协同性',
-      'B0EXAMPLE1,示例产品,旅行配件,美国站,$29.99,1250,4.4,386,12,18500,24,$38K,35,"The zipper broke after one trip || Hard to clean",4,4,4,4,4',
+      'ASIN,产品名称,类目,站点,价格,BSR,评分,评论数,关键词搜索量,趋势增幅,月销售额,毛利率,差评内容',
+      'B0EXAMPLE1,示例产品,旅行配件,美国站,$29.99,1250,4.4,386,18500,24,$38K,35,"zipper broke || hard to clean"',
     ].join('\n');
-    const blob = new Blob([`\uFEFF${template}`], {
-      type: 'text/csv;charset=utf-8',
-    });
+    const blob = new Blob([`\uFEFF${template}`], { type: 'text/csv;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = 'TrendPilot-标准导入模板.csv';
@@ -984,8 +1322,82 @@ export default function Home() {
     URL.revokeObjectURL(link.href);
   }
 
-  /** Fetches the free public trend feed and downloads a normalized CSV snapshot. */
-  async function downloadGoogleTrends(): Promise<void> {
+  /** Extracts a canonical ASIN from a raw ASIN or an Amazon product URL. */
+  function extractAsin(value: string): string | null {
+    const raw = value.trim().toUpperCase();
+    const direct = raw.match(/^[A-Z0-9]{10}$/)?.[0];
+    if (direct) return direct;
+    return raw.match(/\/(?:DP|GP\/PRODUCT)\/([A-Z0-9]{10})(?:[/?#]|$)/)?.[1] ?? null;
+  }
+
+  /** Adds bounded ASIN references without claiming unavailable Listing metrics. */
+  async function handleAsinIntake(): Promise<void> {
+    setIntakeResult(null);
+    setIntakeMessage('正在校验 ASIN…');
+    const lines = asinInput.split(/[\n,\s]+/).filter(Boolean).slice(0, 100);
+    const accepted = [...new Set(lines.map(extractAsin).filter((value): value is string => Boolean(value)))];
+    const rejected = lines.filter((line) => !extractAsin(line));
+    if (!accepted.length) {
+      setIntakeMessage('未识别到有效 ASIN 或 Amazon 商品链接');
+      setIntakeResult({ accepted: 0, rejected });
+      return;
+    }
+    const scores: Candidate['scores'] = [3, 3, 3, 3, 3];
+    const payload = accepted.map((asin) => ({
+      name: `待核验商品 · ${asin}`,
+      asin,
+      category: intakeCategory,
+      dataOrigin: 'manual' as const,
+      market: intakeMarket,
+      score: 15,
+      verdict: '观察' as const,
+      trend: 0,
+      revenue: '$0',
+      reviews: 0,
+      margin: 0,
+      price: '$0',
+      bsr: 0,
+      rating: 0,
+      searchVolume: 0,
+      reviewGrowth: 0,
+      reviewText: '',
+      scores,
+      signals: ['ASIN 已建立候选记录', '价格、评分与 BSR 等待人工复核'],
+      pains: ['尚无可复核的评论证据'],
+      sellingPoint: '待完成真实数据复核后生成',
+    } satisfies Omit<Candidate, 'id'>));
+    try {
+      const response = await fetch('/api/candidates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? '建立候选失败');
+      await loadCandidates();
+      setIntakeResult({ accepted: accepted.length, rejected });
+      setIntakeMessage(
+        rejected.length
+          ? `已建立 ${accepted.length} 条待核验候选，跳过 ${rejected.length} 条无效内容`
+          : `已建立 ${accepted.length} 条待核验候选`,
+      );
+      setAsinInput('');
+    } catch (error) {
+      setIntakeMessage(error instanceof Error ? error.message : '建立候选失败');
+    }
+  }
+
+  /** Closes intake and opens the trend workspace with the new references. */
+  function finishAsinIntake(): void {
+    setShowAsinIntake(false);
+    setActiveStage(1);
+    setFilter('全部');
+    setCategoryFilter('全部类目');
+    setCategoryGroupFilter('全部分组');
+  }
+
+  /** Fetches the free public trend feed and saves it directly to the signal pool. */
+  async function syncGoogleTrends(): Promise<void> {
     setSourceSyncing(true);
     setSourceMessage('正在读取 Google Trends 美国站实时数据…');
     try {
@@ -996,7 +1408,7 @@ export default function Home() {
       });
       if (!response.ok) {
         const result = (await response.json()) as { error?: string };
-        throw new Error(result.error ?? '数据下载失败');
+        throw new Error(result.error ?? '趋势同步失败');
       }
       const result = (await response.json()) as {
         error?: string;
@@ -1007,48 +1419,30 @@ export default function Home() {
           source: string;
         }>;
       };
-      const rows = [
-        ['关键词', '搜索热度', '发布时间', '站点', '数据来源'],
-        ...(result.items ?? []).map((item) => [
-          item.keyword,
-          item.traffic,
-          item.publishedAt,
-          'US',
-          item.source,
-        ]),
-      ];
-      const csvCell = (value: string) => `"${value.replace(/"/g, '""')}"`;
-      const blob = new Blob(
-        [`\uFEFF${rows.map((row) => row.map(csvCell).join(',')).join('\n')}`],
-        { type: 'text/csv;charset=utf-8' },
-      );
-      const href = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = href;
-      link.download = `TrendPilot-Google-Trends-US-${new Date().toISOString().slice(0, 10)}.csv`;
-      link.click();
-      URL.revokeObjectURL(href);
       setSourceMessage(
-        '已下载最新 Google Trends CSV，可直接用于选品补充判断。',
+        `已将 ${result.items?.length ?? 0} 条 Google Trends 信号直接写入市场信号池。`,
       );
       await loadSourceRuns();
       await loadTrendSignals();
     } catch (error) {
-      setSourceMessage(error instanceof Error ? error.message : '数据下载失败');
+      setSourceMessage(error instanceof Error ? error.message : '趋势同步失败');
     } finally {
       setSourceSyncing(false);
     }
   }
 
-  /** Runs explainable scoring for one candidate or the full candidate pool. */
-  async function handleAnalyze(ids?: number[]): Promise<void> {
+  /** Runs one preliminary review or a strictly gated final-scoring batch. */
+  async function handleAnalyze(
+    ids?: number[],
+    scoringMode: 'preliminary' | 'final' = 'preliminary',
+  ): Promise<void> {
     setAnalysisLoading(true);
     setAnalysisMessage('');
     try {
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids }),
+        body: JSON.stringify({ ids, scoringMode }),
       });
       const result = (await response.json()) as {
         analyzed?: number;
@@ -1060,7 +1454,7 @@ export default function Home() {
       await loadCandidates();
       setAnalysisMessage(
         result.mode === 'openai' || result.mode === 'siliconflow'
-          ? `已用 ${aiStatus.provider} · ${aiStatus.model ?? '已配置模型'} 完成 ${result.analyzed ?? 0} 个产品分析`
+          ? `已用 ${aiStatus.provider} · ${aiStatus.model ?? '已配置模型'} 完成 ${result.analyzed ?? 0} 个产品${scoringMode === 'final' ? '最终评分' : '预评分'}`
           : `已完成 ${result.analyzed ?? 0} 个产品的智能预评分${result.fallbackCount ? `，${result.fallbackCount} 个已安全回退` : ''}`,
       );
     } catch (error) {
@@ -1100,7 +1494,9 @@ export default function Home() {
     if (Array.isArray(result.candidates) && result.candidates.length > 0) {
       setCandidates(result.candidates);
       setDuplicateCount(Math.max(0, result.duplicateCount ?? 0));
-      setSelectedId(result.candidates[0].id);
+      const firstQualified = rankDecisionCandidates(result.candidates)[0];
+      setSelectedId(firstQualified?.id ?? result.candidates[0].id);
+      void loadDataQuality();
       return;
     }
     for (const candidate of DEFAULT_CANDIDATES) {
@@ -1139,8 +1535,13 @@ export default function Home() {
       setLoginError('账号或密码不正确');
       return;
     }
+    const result = (await response.json()) as {
+      username: string;
+      role: 'admin' | 'member';
+    };
     setLoginError('');
     setIsAuthenticated(true);
+    setCurrentUser({ username: result.username, role: result.role });
     await loadCandidates();
     await loadAiStatus();
   }
@@ -1149,6 +1550,7 @@ export default function Home() {
   async function handleLogout(): Promise<void> {
     await fetch('/api/auth', { method: 'DELETE' });
     setIsAuthenticated(false);
+    setCurrentUser(null);
   }
 
   if (!isAuthenticated) {
@@ -1296,6 +1698,10 @@ export default function Home() {
             <h1>亚马逊机会雷达</h1>
           </div>
           <div className="top-actions">
+            <span className={`user-role-badge role-${currentUser?.role ?? 'member'}`}>
+              {currentUser?.username ?? '成员'} ·{' '}
+              {currentUser?.role === 'admin' ? '管理员' : '成员'}
+            </span>
             <label className="search">
               <Search size={17} />
               <input
@@ -1373,13 +1779,24 @@ export default function Home() {
                 <button
                   className="primary-button"
                   onClick={() => {
+                    setIntakeMessage('');
+                    setIntakeResult(null);
+                    setShowAsinIntake(true);
+                  }}
+                >
+                  <Plus size={16} /> 添加 Amazon 链接 / ASIN
+                </button>
+                <button
+                  className="secondary-stage-action"
+                  onClick={() => {
                     setImportMessage('');
+                    setSelectedSource('sellersprite');
                     setShowImport(true);
                   }}
                 >
-                  <Upload size={16} /> 导入采集数据
+                  <Upload size={16} /> 导入 CSV / XLSX
                 </button>
-                <span>支持标准 CSV，按 ASIN + 站点自动增量更新</span>
+                <span>免费 ASIN 入池与现有采集文件可同时使用</span>
               </>
             )}
             {activeStage === 1 && (
@@ -1405,11 +1822,26 @@ export default function Home() {
               <>
                 <button
                   className="primary-button"
-                  disabled={analysisLoading}
-                  onClick={() => void handleAnalyze()}
+                  disabled={
+                    analysisLoading ||
+                    !dataQuality?.finalScoreReady ||
+                    currentUser?.role !== 'admin'
+                  }
+                  title={
+                    currentUser?.role !== 'admin'
+                      ? '仅管理员可运行最终评分'
+                      : undefined
+                  }
+                  onClick={() => void handleAnalyze(undefined, 'final')}
                 >
                   <Sparkles size={16} />
-                  {analysisLoading ? '评分中…' : '运行批量 AI 评分'}
+                  {analysisLoading
+                    ? '评分中…'
+                    : currentUser?.role !== 'admin'
+                      ? '最终评分需管理员执行'
+                    : dataQuality?.finalScoreReady
+                      ? `运行最终 AI 评分（${dataQuality.finalScoreReady}）`
+                      : '暂无最终评分就绪商品'}
                 </button>
                 <button
                   className="secondary-stage-action"
@@ -1421,7 +1853,7 @@ export default function Home() {
                   <History size={16} /> 运行记录
                 </button>
                 <span>
-                  当前使用 {aiStatus.model ?? '规则评分'} · 五维评分卡
+                  当前使用 {aiStatus.model ?? '规则评分'} · 批量评分仅处理六项数据完整商品
                 </span>
               </>
             )}
@@ -1429,11 +1861,20 @@ export default function Home() {
               <>
                 <button
                   className="primary-button"
-                  disabled={reportGenerating}
+                  disabled={reportGenerating || currentUser?.role !== 'admin'}
+                  title={
+                    currentUser?.role !== 'admin'
+                      ? '仅管理员可生成正式周报'
+                      : undefined
+                  }
                   onClick={() => void generateWeeklyReport()}
                 >
                   <FileOutput size={16} />
-                  {reportGenerating ? '生成中…' : '生成并保存本周周报'}
+                  {reportGenerating
+                    ? '生成中…'
+                    : currentUser?.role === 'admin'
+                      ? '生成并保存本周周报'
+                      : '正式周报需管理员生成'}
                 </button>
                 <span>{analysis.highPotential} 个高潜候选等待推进</span>
               </>
@@ -1603,7 +2044,13 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="chart-wrap">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer
+                    width="100%"
+                    height="100%"
+                    minWidth={0}
+                    minHeight={1}
+                    initialDimension={{ width: 900, height: 320 }}
+                  >
                     <AreaChart
                       data={chartData}
                       margin={{ top: 10, right: 8, left: -24, bottom: 0 }}
@@ -1697,6 +2144,28 @@ export default function Home() {
                   </div>
                   <div className="filters">
                     <Filter size={15} />
+                    <div className="data-scope-switch" aria-label="数据范围">
+                      <button
+                        className={
+                          dataScope === 'decision-ready' ? 'filter-active' : ''
+                        }
+                        onClick={() => {
+                          setDataScope('decision-ready');
+                          setVisibleCandidateCount(50);
+                        }}
+                      >
+                        真实可决策
+                      </button>
+                      <button
+                        className={dataScope === 'all' ? 'filter-active' : ''}
+                        onClick={() => {
+                          setDataScope('all');
+                          setVisibleCandidateCount(50);
+                        }}
+                      >
+                        全部数据
+                      </button>
+                    </div>
                     <select
                       aria-label="按类目筛选"
                       value={categoryFilter}
@@ -1734,7 +2203,10 @@ export default function Home() {
                   </div>
                 </div>
                 <p className="candidate-result-count">
-                  当前显示 {filtered.length} / {candidates.length} 个产品
+                  当前显示 {visibleCandidates.length} / {filtered.length} 个产品
+                  {dataScope === 'decision-ready'
+                    ? ` · 已排除 ${candidates.length - qualifiedCandidates.length} 条数据不完整记录`
+                    : ''}
                   {categoryGroupFilter !== '全部分组'
                     ? ` · ${categoryGroupFilter}`
                     : ''}
@@ -1753,7 +2225,7 @@ export default function Home() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filtered.map((item) => (
+                      {visibleCandidates.map((item) => (
                         <tr
                           key={item.id}
                           className={
@@ -1811,6 +2283,19 @@ export default function Home() {
                   {filtered.length === 0 && (
                     <div className="empty-state">没有找到匹配的候选产品</div>
                   )}
+                  {visibleCandidates.length < filtered.length && (
+                    <div className="candidate-load-more">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setVisibleCandidateCount((count) => count + 50)
+                        }
+                      >
+                        再显示 50 个
+                      </button>
+                      <span>剩余 {filtered.length - visibleCandidates.length} 个</span>
+                    </div>
+                  )}
                 </div>
               </article>
             </section>
@@ -1847,7 +2332,14 @@ export default function Home() {
                     <button
                       aria-label="删除候选产品"
                       onClick={handleDeleteCandidate}
-                      disabled={candidates.length <= 1}
+                      disabled={
+                        candidates.length <= 1 || currentUser?.role !== 'admin'
+                      }
+                      title={
+                        currentUser?.role !== 'admin'
+                          ? '仅管理员可删除商品'
+                          : undefined
+                      }
                     >
                       <Trash2 size={15} />
                     </button>
@@ -1914,6 +2406,50 @@ export default function Home() {
                     ))}
                   </div>
                 </div>
+                <div className="section-block verification-history">
+                  <div className="section-title">
+                    <History size={16} />
+                    <h3>数据核对历史</h3>
+                    <span className="evidence-count">
+                      {dataVerifications.length
+                        ? `${dataVerifications.length} 次记录`
+                        : '暂无记录'}
+                    </span>
+                  </div>
+                  {dataVerifications.length ? (
+                    <>
+                      <div className="verification-timeline">
+                        {dataVerifications
+                          .slice(0, showAllVerifications ? 50 : 5)
+                          .map((item) => (
+                            <article key={item.id}>
+                              <i />
+                              <div>
+                                <strong>{item.fields}</strong>
+                                <span>{item.source}</span>
+                                <small>
+                                  {item.verifiedDate} · {item.owner}
+                                </small>
+                              </div>
+                            </article>
+                          ))}
+                      </div>
+                      {dataVerifications.length > 5 && (
+                        <button
+                          type="button"
+                          className="verification-expand"
+                          onClick={() => setShowAllVerifications((value) => !value)}
+                        >
+                          {showAllVerifications ? '收起历史' : `查看全部 ${dataVerifications.length} 条`}
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <p className="verification-empty">
+                      在数据补全队列保存 BSR、趋势或毛利后，将在这里形成可追溯记录。
+                    </p>
+                  )}
+                </div>
                 <div className="selling-point">
                   <span>SELLING POINT · 智能预评分</span>
                   <p>{selected.sellingPoint}</p>
@@ -1973,7 +2509,7 @@ export default function Home() {
                               : 'source-setup'
                           }
                         >
-                          {source.status === 'ready' ? '可导入' : '待配置'}
+                          {source.status === 'ready' ? '可用' : '待配置'}
                         </i>
                       </button>
                     ))}
@@ -1982,39 +2518,41 @@ export default function Home() {
                     <div>
                       <strong>免费自动源 · 每日 09:00</strong>
                       <span>
-                        Google Trends · 美国站 · 自动入库；也可立即抓取并下载
+                        Google Trends · 美国站 · 直接写入市场信号池
                       </span>
                     </div>
                     <button
                       type="button"
                       className="primary-button"
                       disabled={sourceSyncing}
-                      onClick={() => void downloadGoogleTrends()}
+                      onClick={() => void syncGoogleTrends()}
                     >
-                      <Download size={15} />
-                      {sourceSyncing ? '正在获取…' : '抓取并下载 CSV'}
+                      <TrendingUp size={15} />
+                      {sourceSyncing ? '正在同步…' : '立即同步趋势'}
                     </button>
                   </div>
                   {sourceMessage && (
                     <p className="source-action-message">{sourceMessage}</p>
                   )}
                   <div className="field-guide">
-                    <strong>Amazon 真实数据接入</strong>
+                    <strong>Amazon 候选品入池</strong>
                     <p>
-                      在 Octoparse 按 ASIN
-                      采集标题、价格、BSR、评分、评论数和差评，导出 CSV
-                      后点击右上角“导入采集数据”。
+                      粘贴 Amazon 商品链接或 ASIN，系统只建立待核验候选，
+                      不会虚构价格、BSR、评分或评论数。
                     </p>
                     <p>
-                      ASIN 是必需的唯一身份；同一站点再次导入相同 ASIN
-                      会更新商品并生成当天快照，不会重复创建。
+                      完成商品名称和关键数据复核后，才会进入可决策口径。
                     </p>
                     <button
                       type="button"
                       className="template-button"
-                      onClick={downloadCsvTemplate}
+                      onClick={() => {
+                        setIntakeMessage('');
+                        setIntakeResult(null);
+                        setShowAsinIntake(true);
+                      }}
                     >
-                      <Download size={15} /> 下载 Octoparse 标准模板
+                      <Plus size={15} /> 添加 Amazon 链接 / ASIN
                     </button>
                   </div>
                   <div className="source-runs">
@@ -2026,7 +2564,7 @@ export default function Home() {
                     </div>
                     {sourceRuns.length === 0 ? (
                       <p className="source-runs-empty">
-                        点击“抓取并下载 CSV”后，这里会记录执行结果。
+                        点击“立即同步趋势”后，这里会记录执行结果。
                       </p>
                     ) : (
                       <div className="source-runs-list">
@@ -2131,20 +2669,140 @@ export default function Home() {
                   </article>
                   <article>
                     <span>数据完整度</span>
-                    <strong>
-                      {Math.round(
-                        (candidates.filter(
-                          (item) =>
-                            item.price && item.rating && item.searchVolume,
-                        ).length /
-                          Math.max(candidates.length, 1)) *
-                          100,
-                      )}
-                      %
-                    </strong>
-                    <small>价格、评分、搜索量</small>
+                    <strong>{dataQuality?.completeness ?? 0}%</strong>
+                    <small>价格、BSR、评分、评论数</small>
                   </article>
                 </div>
+                <article className="panel quality-center">
+                  <div className="panel-head">
+                    <div>
+                      <span className="eyebrow">数据质量中心</span>
+                      <h2>优先补全队列</h2>
+                    </div>
+                    <div className="quality-actions">
+                      <button
+                        className="secondary-stage-action"
+                        onClick={downloadBsrTask}
+                        disabled={!dataQuality?.total}
+                      >
+                        <Download size={16} /> 导出决策数据补全任务
+                      </button>
+                      <button
+                        className="secondary-stage-action"
+                        onClick={() => void loadDataQuality()}
+                      >
+                        <History size={16} /> 重新巡检
+                      </button>
+                    </div>
+                  </div>
+                  <div className="quality-summary-grid">
+                    <div><strong>{dataQuality?.finalScoreReady ?? 0}</strong><span>最终评分就绪</span></div>
+                    <div><strong>{dataQuality?.fullyComplete ?? 0}</strong><span>Listing 完整（4/4）</span></div>
+                    <div><strong>{dataQuality?.missingBsr ?? 0}</strong><span>缺 BSR</span></div>
+                    <div><strong>{dataQuality?.missingMargin ?? 0}</strong><span>缺毛利</span></div>
+                  </div>
+                  <section className="task-board" aria-label="数据补全任务看板">
+                    <div className="task-board-head">
+                      <div><span className="eyebrow">团队执行</span><h3>数据补全任务看板</h3></div>
+                      <button type="button" onClick={() => void loadCompletionTasks()}><History size={14} /> 刷新</button>
+                    </div>
+                    <div className="task-board-metrics">
+                      <div><strong>{completionTaskSummary.pending}</strong><span>待处理</span></div>
+                      <div><strong>{completionTaskSummary.active}</strong><span>处理中</span></div>
+                      <div><strong>{completionTaskSummary.completed}</strong><span>已完成</span></div>
+                      <div className={completionTaskSummary.overdue ? 'task-metric-alert' : ''}><strong>{completionTaskSummary.overdue}</strong><span>已逾期</span></div>
+                    </div>
+                    {completionTasks.length ? (
+                      <div className="task-board-list">
+                        {completionTasks.slice(0, 6).map((task) => (
+                          <button key={task.candidateId} type="button" onClick={() => { setSelectedId(task.candidateId); setActiveStage(2); }}>
+                            <span><strong>{task.name}</strong><small>{task.asin} · {task.assignee}</small></span>
+                            <em className={task.overdue ? 'task-overdue' : `task-${task.status}`}>
+                              {task.overdue ? `逾期 · ${task.dueDate}` : `${task.status === 'completed' ? '已完成' : task.status === 'active' ? '处理中' : '待处理'} · ${task.dueDate}`}
+                            </em>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="source-runs-empty">暂无已分派任务，可在下方优先队列批量分派。</p>
+                    )}
+                  </section>
+                  <p className="quality-guide">
+                    直接在下方填写已核对的 Amazon BSR、Google Trends 增幅和真实毛利；保存后系统生成今日快照。也可导出完整任务后批量核对并重新导入。
+                  </p>
+                  {qualityQueue.length ? (
+                    <div className="quality-queue-editor">
+                      <div className="task-assignment-bar">
+                        <div><strong>批量分派本页任务</strong><span>把当前 8 个优先商品交给同一负责人</span></div>
+                        <label>负责人<input value={taskAssignment.assignee} maxLength={60} onChange={(event) => setTaskAssignment((current) => ({ ...current, assignee: event.target.value }))} /></label>
+                        <label>截止日期<input type="date" value={taskAssignment.dueDate} onChange={(event) => setTaskAssignment((current) => ({ ...current, dueDate: event.target.value }))} /></label>
+                        <button type="button" disabled={taskSaving} onClick={() => void assignQualityTasks()}>{taskSaving ? '分派中…' : '分派本页'}</button>
+                      </div>
+                      <div className="verification-meta-grid">
+                        <label>数据来源<input value={verificationMeta.source} maxLength={120} onChange={(event) => setVerificationMeta((current) => ({ ...current, source: event.target.value }))} /></label>
+                        <label>核对日期<input type="date" value={verificationMeta.verifiedDate} onChange={(event) => setVerificationMeta((current) => ({ ...current, verifiedDate: event.target.value }))} /></label>
+                        <label>负责人<input value={verificationMeta.owner} maxLength={60} onChange={(event) => setVerificationMeta((current) => ({ ...current, owner: event.target.value }))} /></label>
+                      </div>
+                      <div className="quality-queue-header">
+                        <span>优先商品</span><span>BSR</span><span>趋势 %</span><span>毛利 %</span>
+                      </div>
+                      {qualityQueue.slice(0, 8).map((item) => {
+                        const draft = qualityDrafts[item.id] ?? { bsr: '', trend: '', margin: '' };
+                        return (
+                        <div className="quality-queue-row" key={item.id}>
+                          <span className="quality-queue-main">
+                            <button type="button" onClick={() => { setSelectedId(item.id); setActiveStage(2); }}>
+                              {item.name}
+                            </button>
+                            <small>{item.asin} · {item.category} · {item.market}</small>
+                            <span className={`task-chip task-${item.taskStatus || 'unassigned'}`}>
+                              {item.taskAssignee
+                                ? `${item.taskAssignee} · ${item.taskStatus === 'completed' ? '已完成' : item.taskStatus === 'active' ? '处理中' : '待处理'} · ${item.taskDueDate}`
+                                : '未分派'}
+                            </span>
+                            {item.taskAssignee && (
+                              <select
+                                aria-label={`${item.name}任务状态`}
+                                value={item.taskStatus}
+                                onChange={(event) => void updateQualityTask(item.id, event.target.value as 'pending' | 'active' | 'completed')}
+                              >
+                                <option value="pending">待处理</option>
+                                <option value="active">处理中</option>
+                                <option value="completed">已完成</option>
+                              </select>
+                            )}
+                          </span>
+                          {(['bsr', 'trend', 'margin'] as const).map((field) => (
+                            <input
+                              key={field}
+                              aria-label={`${item.name} ${field}`}
+                              type="number"
+                              min={field === 'bsr' ? 1 : field === 'trend' ? -100 : -1000}
+                              max={field === 'trend' ? 10000 : field === 'margin' ? 100 : undefined}
+                              step={field === 'bsr' ? 1 : 0.1}
+                              placeholder={item.missing.includes(field === 'bsr' ? 'BSR' : field === 'trend' ? '趋势' : '毛利') ? '待补' : '已有'}
+                              value={draft[field]}
+                              onChange={(event) =>
+                                setQualityDrafts((current) => ({
+                                  ...current,
+                                  [item.id]: { ...draft, [field]: event.target.value },
+                                }))
+                              }
+                            />
+                          ))}
+                        </div>
+                      )})}
+                      <div className="quality-save-bar">
+                        <span>{qualityMessage || '仅填写经过核对的真实数据；空白字段保持不变。'}</span>
+                        <button className="primary-button" disabled={qualitySaving} onClick={() => void saveQualityQueue()}>
+                          {qualitySaving ? '保存中…' : '保存本页补全数据'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="source-runs-empty">全部 ASIN 商品已满足决策字段要求。</p>
+                  )}
+                </article>
                 <article className="panel phase-panel">
                   <div className="panel-head">
                     <div>
@@ -2153,9 +2811,23 @@ export default function Home() {
                     </div>
                     <button
                       className="primary-button"
-                      onClick={() => setShowImport(true)}
+                      onClick={() => {
+                        setIntakeMessage('');
+                        setIntakeResult(null);
+                        setShowAsinIntake(true);
+                      }}
                     >
-                      <Upload size={16} /> 导入新一批数据
+                      <Plus size={16} /> 添加 ASIN 候选
+                    </button>
+                    <button
+                      className="secondary-stage-action"
+                      onClick={() => {
+                        setImportMessage('');
+                        setSelectedSource('sellersprite');
+                        setShowImport(true);
+                      }}
+                    >
+                      <Upload size={16} /> 导入采集文件
                     </button>
                   </div>
                   <div className="phase-table-wrap">
@@ -2559,15 +3231,73 @@ export default function Home() {
                   />
                 </label>
                 <label>
-                  预估毛利率 (%)
+                  实际测算毛利率 (%)
                   <input
                     name="margin"
                     type="number"
-                    min="0"
+                    min="-1000"
                     max="100"
-                    defaultValue={editorMode === 'edit' ? selected.margin : 30}
+                    step="0.1"
+                    value={marginDraft}
+                    onChange={(event) => setMarginDraft(event.target.value)}
                   />
+                  <small className="field-hint">
+                    （售价－采购－头程－平台及履约费－其他成本）÷ 售价 × 100%
+                  </small>
                 </label>
+                <fieldset className="margin-calculator">
+                  <legend>单件毛利计算器</legend>
+                  <div className="margin-cost-grid">
+                    {[
+                      ['sellingPrice', '售价'],
+                      ['productCost', '采购成本'],
+                      ['inboundFreight', '头程运费'],
+                      ['platformFees', '平台及履约费'],
+                      ['otherCosts', '其他成本'],
+                    ].map(([key, label]) => (
+                      <label key={key}>
+                        {label}
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={marginCosts[key as keyof typeof marginCosts]}
+                          onChange={(event) =>
+                            setMarginCosts((current) => ({
+                              ...current,
+                              [key]: event.target.value,
+                            }))
+                          }
+                          placeholder="0.00"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <div className="margin-result">
+                    {marginResult ? (
+                      <div>
+                        <span>单件总成本 ¥/$ {marginResult.totalCost.toFixed(2)}</span>
+                        <strong>毛利率 {marginResult.marginPercent.toFixed(1)}%</strong>
+                        <span>毛利额 ¥/$ {marginResult.grossProfit.toFixed(2)}</span>
+                      </div>
+                    ) : (
+                      <p>填写售价和各项单件成本后自动计算。</p>
+                    )}
+                    <button
+                      type="button"
+                      disabled={!marginResult}
+                      onClick={() =>
+                        marginResult &&
+                        setMarginDraft(marginResult.marginPercent.toFixed(1))
+                      }
+                    >
+                      写入毛利率
+                    </button>
+                  </div>
+                  <small>
+                    金额币种保持一致；平台及履约费请合并佣金、FBA 配送费等。
+                  </small>
+                </fieldset>
                 <fieldset className="score-editor">
                   <legend>五维评分（每项 1–5 分）</legend>
                   {scoreLabels.map((label, index) => (
@@ -2629,50 +3359,29 @@ export default function Home() {
       )}
       {showImport && (
         <div className="modal-backdrop">
-          <dialog
-            open
-            className="modal import-modal"
-            aria-labelledby="import-title"
-          >
+          <dialog open className="modal import-modal" aria-labelledby="import-title">
             <div className="modal-head">
               <div>
                 <span className="eyebrow">数据采集 · CSV / XLSX</span>
                 <h2 id="import-title">批量导入候选产品</h2>
               </div>
-              <button
-                aria-label="关闭导入窗口"
-                onClick={() => setShowImport(false)}
-              >
-                ×
-              </button>
+              <button aria-label="关闭导入窗口" onClick={() => setShowImport(false)}>×</button>
             </div>
             <label className="source-select-label">
               本次数据来源
-              <select
-                value={selectedSource}
-                onChange={(event) => setSelectedSource(event.target.value)}
-              >
+              <select value={selectedSource} onChange={(event) => setSelectedSource(event.target.value)}>
                 {collectionSources.map((source) => (
-                  <option value={source.id} key={source.id}>
-                    {source.name} · {source.mode}
-                  </option>
+                  <option value={source.id} key={source.id}>{source.name} · {source.mode}</option>
                 ))}
               </select>
             </label>
             <label className="source-select-label">
-              CSV 缺失类目时归入
-              <select
-                value={importCategory}
-                onChange={(event) => setImportCategory(event.target.value)}
-              >
+              文件缺失类目时归入
+              <select value={importCategory} onChange={(event) => setImportCategory(event.target.value)}>
                 <option value="未分类">未分类</option>
                 {CATEGORY_GROUPS.map((group) => (
                   <optgroup label={group.label} key={group.label}>
-                    {group.categories.map((category) => (
-                      <option value={category} key={category}>
-                        {category}
-                      </option>
-                    ))}
+                    {group.categories.map((category) => <option value={category} key={category}>{category}</option>)}
                   </optgroup>
                 ))}
               </select>
@@ -2680,11 +3389,7 @@ export default function Home() {
             <label className="upload-zone">
               <Upload size={28} />
               <strong>点击选择，或拖入 CSV / XLSX</strong>
-              <span>
-                {importFileName
-                  ? `已选择：${importFileName}`
-                  : `当前来源：${collectionSources.find((source) => source.id === selectedSource)?.name ?? '外部渠道'}，文件最大 5MB`}
-              </span>
+              <span>{importFileName ? `已选择：${importFileName}` : '文件最大 5MB'}</span>
               <input
                 type="file"
                 accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -2700,44 +3405,152 @@ export default function Home() {
                 aria-label="粘贴 CSV 内容"
                 value={pastedCsv}
                 onChange={(event) => setPastedCsv(event.target.value)}
-                placeholder="粘贴包含表头的 CSV；一次最多 1,000 行，系统会自动分批导入"
+                placeholder="粘贴包含表头的 CSV；系统会按 ASIN + 站点去重"
                 rows={7}
+              />
+              <button type="button" className="primary-button" onClick={() => void handlePastedCsvImport()}>
+                校验并导入粘贴数据
+              </button>
+            </div>
+            <button type="button" className="template-button" onClick={downloadCsvTemplate}>
+              <Download size={15} /> 下载标准 CSV 模板
+            </button>
+            <div className="field-guide">
+              <strong>导入规则</strong>
+              <p>建议必填 ASIN + 产品名称；同一站点的相同 ASIN 会更新原记录。</p>
+              <p>支持价格、BSR、评分、评论数、搜索量、趋势、销售额、毛利率和差评内容。</p>
+            </div>
+            {importMessage && <p className="import-message">{importMessage}</p>}
+            <div className="modal-actions">
+              <button type="button" onClick={() => setShowImport(false)}>完成</button>
+            </div>
+          </dialog>
+        </div>
+      )}
+      {showAsinIntake && (
+        <div className="modal-backdrop">
+          <dialog
+            open
+            className="modal import-modal"
+            aria-labelledby="asin-intake-title"
+          >
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">免费情报模式 · Amazon</span>
+                <h2 id="asin-intake-title">添加商品链接 / ASIN</h2>
+              </div>
+              <button
+                aria-label="关闭候选录入窗口"
+                onClick={() => setShowAsinIntake(false)}
+              >
+                ×
+              </button>
+            </div>
+            <label className="source-select-label">
+              目标站点
+              <select
+                value={intakeMarket}
+                onChange={(event) => setIntakeMarket(event.target.value)}
+              >
+                <option value="美国站">美国站</option>
+                <option value="英国站">英国站</option>
+                <option value="德国站">德国站</option>
+                <option value="日本站">日本站</option>
+                <option value="加拿大站">加拿大站</option>
+              </select>
+            </label>
+            <label className="source-select-label">
+              候选类目
+              <select
+                value={intakeCategory}
+                onChange={(event) => setIntakeCategory(event.target.value)}
+              >
+                <option value="未分类">未分类</option>
+                {CATEGORY_GROUPS.map((group) => (
+                  <optgroup label={group.label} key={group.label}>
+                    {group.categories.map((category) => (
+                      <option value={category} key={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+            <div className="paste-import-zone">
+              <div>
+                <strong>粘贴 Amazon 链接或 ASIN</strong>
+                <span>每行一条，单次最多 100 条；相同站点自动去重</span>
+              </div>
+              <textarea
+                aria-label="Amazon 链接或 ASIN"
+                value={asinInput}
+                onChange={(event) => setAsinInput(event.target.value)}
+                placeholder={'B0XXXXXXXX\nhttps://www.amazon.com/dp/B0YYYYYYYY'}
+                rows={9}
               />
               <button
                 type="button"
                 className="primary-button"
-                onClick={() => void handlePastedCsvImport()}
+                disabled={!asinInput.trim()}
+                onClick={() => void handleAsinIntake()}
               >
-                校验并导入粘贴数据
+                校验并建立候选
               </button>
             </div>
-            <button
-              type="button"
-              className="template-button"
-              onClick={downloadCsvTemplate}
-            >
-              <Download size={15} />
-              下载标准 CSV 模板
-            </button>
             <div className="field-guide">
-              <strong>字段说明</strong>
+              <strong>数据口径</strong>
               <p>
-                建议必填：ASIN + 产品名称；同一站点的相同 ASIN
-                会更新原记录，不再重复创建。
+                系统只保存你提供的 ASIN，不会自动抓取 Amazon 页面。
               </p>
               <p>
-                已内置 6 个品类组、36 个常用类目；CSV 仍可填写任意自定义类目。
+                新增记录标记为“待核验”；价格、BSR、评分和评论数不会被补造。
               </p>
               <p>
-                支持：价格、BSR、评分、评论数、评论增速、关键词搜索量、差评内容、趋势、销售额、毛利率及五维评分；缺省评分按
-                3 分处理。
+                团队在商品编辑页完成真实数据复核后，再运行 AI 评分。
               </p>
             </div>
-            {importMessage && <p className="import-message">{importMessage}</p>}
+            {intakeMessage && <p className="import-message">{intakeMessage}</p>}
+            {intakeResult && (
+              <section className="import-result" aria-live="polite">
+                <div className="import-result-summary">
+                  <div>
+                    <strong>{intakeResult.accepted}</strong>
+                    <span>待核验候选已建立</span>
+                  </div>
+                  <div>
+                    <strong>{intakeResult.rejected.length}</strong>
+                    <span>无效内容已跳过</span>
+                  </div>
+                </div>
+                {intakeResult.rejected.length > 0 && (
+                  <div className="import-issue-list">
+                    {intakeResult.rejected.slice(0, 3).map((value) => (
+                      <p key={value}>
+                        无法识别 · {value}
+                      </p>
+                    ))}
+                    {intakeResult.rejected.length > 3 && (
+                      <p>另有 {intakeResult.rejected.length - 3} 条无效内容</p>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
             <div className="modal-actions">
-              <button type="button" onClick={() => setShowImport(false)}>
-                完成
-              </button>
+              {intakeResult?.accepted ? (
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={finishAsinIntake}
+                >
+                  完成并查看候选池
+                </button>
+              ) : (
+                <button type="button" onClick={() => setShowAsinIntake(false)}>
+                  取消
+                </button>
+              )}
             </div>
           </dialog>
         </div>
@@ -2764,25 +3577,25 @@ export default function Home() {
             <div className="report-kpis">
               <div>
                 <span>追踪产品</span>
-                <strong>{analysis.tracked}</strong>
+                <strong>{reportAnalysis.tracked}</strong>
               </div>
               <div>
                 <span>高潜候选</span>
-                <strong>{analysis.highPotential}</strong>
+                <strong>{reportAnalysis.highPotential}</strong>
               </div>
               <div>
                 <span>平均趋势</span>
-                <strong>{analysis.averageTrend.toFixed(1)}%</strong>
+                <strong>{reportAnalysis.averageTrend.toFixed(1)}%</strong>
               </div>
               <div>
                 <span>通过毛利率</span>
-                <strong>{analysis.passedMargin.toFixed(1)}%</strong>
+                <strong>{reportAnalysis.passedMargin.toFixed(1)}%</strong>
               </div>
             </div>
             <div className="report-list">
               <div className="report-list-head">
                 <strong>优先候选清单</strong>
-                <span>已按 AI 评分排序</span>
+                <span>按决策分排序 · 仅含完整真实数据</span>
               </div>
               {reportCandidates.map((item, index) => (
                 <div className="report-row" key={item.id}>
@@ -2793,7 +3606,7 @@ export default function Home() {
                       {item.category} · {item.market}
                     </span>
                   </div>
-                  <em>{item.score}/25</em>
+                  <em>{item.decisionScore}/100</em>
                   <span className={verdictClass(item.verdict)}>
                     {item.verdict}
                   </span>
@@ -2849,6 +3662,9 @@ export default function Home() {
               </button>
             </div>
             <div className="runs-list">
+              <p className="run-history-note">
+                2026-09-23 之前的“回退”包含旧版每批仅处理 20 条的数量限制，不等同于模型失败；新版仅记录重试后仍失败的条目。
+              </p>
               {analysisRuns.map((run) => (
                 <article className="run-row" key={run.id}>
                   <span className={`run-state run-${run.status}`} />
@@ -2864,7 +3680,7 @@ export default function Home() {
                   <div className="run-metrics">
                     <span>请求 {run.requested}</span>
                     <span>AI成功 {run.succeeded}</span>
-                    <span>回退 {run.fallback}</span>
+                    <span>失败后回退 {run.fallback}</span>
                     <span>{(run.durationMs / 1000).toFixed(1)}s</span>
                   </div>
                 </article>

@@ -10,8 +10,8 @@ function authorized(request: Request): boolean {
     .AUTOMATION_SECRET;
   return Boolean(
     secret &&
-      secret.length >= 32 &&
-      request.headers.get('authorization') === `Bearer ${secret}`,
+    secret.length >= 32 &&
+    request.headers.get('authorization') === `Bearer ${secret}`,
   );
 }
 
@@ -22,7 +22,7 @@ export async function POST(request: Request): Promise<Response> {
   const startedAt = new Date().toISOString();
   const result = await db()
     .prepare(
-      `SELECT asin,price,bsr,rating,updated_at
+      `SELECT asin,price,bsr,rating,reviews,updated_at
        FROM candidates WHERE asin IS NOT NULL AND asin <> ''`,
     )
     .all<Record<string, string | number | null>>();
@@ -32,7 +32,8 @@ export async function POST(request: Request): Promise<Response> {
     report.stale > 0 ||
     report.missingPrice > 0 ||
     report.missingRating > 0 ||
-    report.missingBsr > 0
+    report.missingBsr > 0 ||
+    report.missingReviews > 0
       ? 'warning'
       : 'success';
   const finishedAt = new Date().toISOString();

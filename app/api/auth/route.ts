@@ -3,6 +3,7 @@ import { env } from '@/lib/runtime';
 import {
   authenticateUser,
   authorized,
+  currentIdentity,
   createSessionToken,
   SESSION_COOKIE,
   sessionMaxAge,
@@ -14,7 +15,12 @@ function db(): D1Database {
 
 /** Returns whether the current request owns a valid administrator session. */
 export async function GET() {
-  return Response.json({ authenticated: await authorized() });
+  const identity = await currentIdentity();
+  return Response.json({
+    authenticated: Boolean(identity),
+    username: identity?.username ?? null,
+    role: identity?.role ?? null,
+  });
 }
 
 /** Validates administrator credentials and creates an HTTP-only session. */
@@ -39,7 +45,11 @@ export async function POST(request: Request) {
     path: '/',
     maxAge: sessionMaxAge(),
   });
-  return Response.json({ authenticated: true, username: identity.username, role: identity.role });
+  return Response.json({
+    authenticated: true,
+    username: identity.username,
+    role: identity.role,
+  });
 }
 
 /** Clears the current administrator session. */

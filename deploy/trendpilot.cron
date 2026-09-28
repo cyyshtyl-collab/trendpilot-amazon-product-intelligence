@@ -3,3 +3,4 @@ CRON_TZ=Asia/Shanghai
 0 9 * * * root /opt/trendpilot/collect-google-trends.sh >> /var/log/trendpilot-automation.log 2>&1
 30 9 * * * root /opt/trendpilot/check-data-quality.sh >> /var/log/trendpilot-automation.log 2>&1
 15 */6 * * * root /opt/trendpilot/collect-candidate-feed.sh >> /var/log/trendpilot-automation.log 2>&1
+15 9 * * * root /opt/trendpilot/repair-decision-readiness.sh >> /var/log/trendpilot-automation.log 2>&1

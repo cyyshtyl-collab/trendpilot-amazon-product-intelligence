@@ -121,16 +121,12 @@
       "indexes": {
         "idx_candidates_score": {
           "name": "idx_candidates_score",
-          "columns": [
-            "score"
-          ],
+          "columns": ["score"],
           "isUnique": false
         },
         "idx_candidates_verdict": {
           "name": "idx_candidates_verdict",
-          "columns": [
-            "verdict"
-          ],
+          "columns": ["verdict"],
           "isUnique": false
         }
       },
