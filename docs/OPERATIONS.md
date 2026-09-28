@@ -88,6 +88,7 @@ docker exec -i trendpilot-db \
 
 增量脚本位于 `deploy/migrations/`，执行记录保存在 `schema_migrations` 表。
 `db/schema.ts` 和 `drizzle/` 仅为早期 SQLite 历史资料，不是生产结构来源。
+旧的 Drizzle 生成工具已从开发依赖中移除，禁止重新生成或执行这些 SQLite 迁移。
 
 ## 5. 定时任务
 
