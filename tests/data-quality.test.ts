@@ -24,6 +24,8 @@ void test('audited zero values qualify while unaudited placeholders remain missi
     new Date('2026-09-28T12:00:00.000Z'),
   );
   assert.equal(report.finalScoreReady, 1);
+  assert.equal(report.marketAssessmentReady, 2);
+  assert.equal(report.awaitingQuote, 1);
   assert.equal(report.missingTrend, 1);
   assert.equal(report.missingMargin, 1);
 });
@@ -34,5 +36,7 @@ void test('negative observed margin is complete rather than missing', () => {
     new Date('2026-09-28T12:00:00.000Z'),
   );
   assert.equal(report.finalScoreReady, 1);
+  assert.equal(report.marketAssessmentReady, 1);
+  assert.equal(report.awaitingQuote, 0);
   assert.equal(report.missingMargin, 0);
 });

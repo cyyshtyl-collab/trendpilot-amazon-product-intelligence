@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   averageKnown,
+  isAwaitingQuote,
   isFinalDecisionReady,
+  isMarketAssessmentReady,
   rankDecisionCandidates,
   type DecisionCandidateInput,
 } from '../lib/decision-report.ts';
@@ -40,6 +42,13 @@ void test('verified zero trend and margin are observed rather than missing', () 
 
 void test('negative verified economics enter scoring and can be rejected explicitly', () => {
   assert.equal(isFinalDecisionReady(candidate({ margin: -5 })), true);
+});
+
+void test('market review remains available while supplier quote is pending', () => {
+  const pending = candidate({ trend: 0, margin: 0 });
+  assert.equal(isMarketAssessmentReady(pending), true);
+  assert.equal(isAwaitingQuote(pending), true);
+  assert.equal(isFinalDecisionReady(pending), false);
 });
 
 void test('BSR is ranked within marketplace and category', () => {

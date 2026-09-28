@@ -2,6 +2,8 @@ export type DataQualityReport = {
   total: number;
   fullyComplete: number;
   decisionReady: number;
+  marketAssessmentReady: number;
+  awaitingQuote: number;
   finalScoreReady: number;
   nearReady: number;
   fresh: number;
@@ -45,6 +47,8 @@ export function summarizeDataQuality(
   let missingReviews = 0;
   let fullyComplete = 0;
   let decisionReady = 0;
+  let marketAssessmentReady = 0;
+  let awaitingQuote = 0;
   let finalScoreReady = 0;
   let nearReady = 0;
   let missingTrend = 0;
@@ -71,6 +75,8 @@ export function summarizeDataQuality(
     if (!hasTrend) missingTrend += 1;
     if (!hasMargin) missingMargin += 1;
     if (populated === 4) fullyComplete += 1;
+    if (populated === 4) marketAssessmentReady += 1;
+    if (populated === 4 && !hasMargin) awaitingQuote += 1;
     if (populated >= 3) decisionReady += 1;
     else if (populated === 2) nearReady += 1;
     if (populated === 4 && hasTrend && hasMargin) finalScoreReady += 1;
@@ -82,6 +88,8 @@ export function summarizeDataQuality(
     total,
     fullyComplete,
     decisionReady,
+    marketAssessmentReady,
+    awaitingQuote,
     finalScoreReady,
     nearReady,
     fresh,
@@ -98,5 +106,5 @@ export function summarizeDataQuality(
 
 /** Formats a compact audit message suitable for the collection-run timeline. */
 export function qualitySummary(report: DataQualityReport): string {
-  return `最终评分就绪 ${report.finalScoreReady}/${report.total} · Listing完整 ${report.fullyComplete}/${report.total} · 基础可决策 ${report.decisionReady}/${report.total} · 待补2项 ${report.nearReady} · 完整度 ${report.completeness}% · 48小时内 ${report.fresh} · 过期 ${report.stale} · 缺价格 ${report.missingPrice} · 缺评分 ${report.missingRating} · 缺BSR ${report.missingBsr} · 缺评论数 ${report.missingReviews} · 缺趋势 ${report.missingTrend} · 缺毛利 ${report.missingMargin}`;
+  return `市场评估就绪 ${report.marketAssessmentReady}/${report.total} · 待询价 ${report.awaitingQuote} · 最终决策就绪 ${report.finalScoreReady}/${report.total} · 基础可决策 ${report.decisionReady}/${report.total} · 待补2项 ${report.nearReady} · 完整度 ${report.completeness}% · 48小时内 ${report.fresh} · 过期 ${report.stale} · 缺价格 ${report.missingPrice} · 缺评分 ${report.missingRating} · 缺BSR ${report.missingBsr} · 缺评论数 ${report.missingReviews} · 缺趋势 ${report.missingTrend} · 缺毛利 ${report.missingMargin}`;
 }

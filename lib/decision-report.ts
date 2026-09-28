@@ -46,6 +46,19 @@ function hasObservedMetric(value: number, verified = false): boolean {
   return Number.isFinite(Number(value)) && (Number(value) !== 0 || verified);
 }
 
+/** Requires a complete marketplace Listing before preliminary market review. */
+export function isMarketAssessmentReady(candidate: DecisionCandidateInput): boolean {
+  return decisionCompleteness(candidate) === 4;
+}
+
+/** Identifies market-ready products whose commercial economics still need a quote. */
+export function isAwaitingQuote(candidate: DecisionCandidateInput): boolean {
+  return (
+    isMarketAssessmentReady(candidate) &&
+    !hasObservedMetric(candidate.margin, candidate.marginVerified)
+  );
+}
+
 /** Requires complete Listing evidence plus observed trend and margin metrics. */
 export function isFinalDecisionReady(candidate: DecisionCandidateInput): boolean {
   return (

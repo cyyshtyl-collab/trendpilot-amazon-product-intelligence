@@ -126,6 +126,8 @@ type DataQuality = {
   fullyComplete: number;
   decisionReady: number;
   finalScoreReady: number;
+  marketAssessmentReady: number;
+  awaitingQuote: number;
   nearReady: number;
   fresh: number;
   stale: number;
@@ -841,7 +843,7 @@ export default function Home() {
       const result = (await response.json()) as { error?: string; updated?: number };
       if (!response.ok) throw new Error(result.error ?? '保存失败');
       await Promise.all([loadCandidates(), loadDataQuality()]);
-      setQualityMessage(`已保存 ${result.updated ?? updates.length} 条，并更新最终评分就绪状态`);
+      setQualityMessage(`已保存 ${result.updated ?? updates.length} 条，并更新三级决策状态`);
     } catch (error) {
       setQualityMessage(error instanceof Error ? error.message : '保存失败');
     } finally {
@@ -2698,7 +2700,9 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="quality-summary-grid">
-                    <div><strong>{dataQuality?.finalScoreReady ?? 0}</strong><span>最终评分就绪</span></div>
+                    <div><strong>{dataQuality?.marketAssessmentReady ?? 0}</strong><span>市场评估就绪</span></div>
+                    <div><strong>{dataQuality?.awaitingQuote ?? 0}</strong><span>待询价</span></div>
+                    <div><strong>{dataQuality?.finalScoreReady ?? 0}</strong><span>最终决策就绪</span></div>
                     <div><strong>{dataQuality?.fullyComplete ?? 0}</strong><span>Listing 完整（4/4）</span></div>
                     <div><strong>{dataQuality?.missingBsr ?? 0}</strong><span>缺 BSR</span></div>
                     <div><strong>{dataQuality?.missingMargin ?? 0}</strong><span>缺毛利</span></div>
