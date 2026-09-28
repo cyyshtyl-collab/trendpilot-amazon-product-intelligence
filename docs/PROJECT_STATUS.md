@@ -31,11 +31,11 @@ TrendPilot 将多渠道市场信号统一为可复核的亚马逊选品决策。
 
 运行容器：
 
-- 本地发布基线：`trendpilot-app:ecs-20260926.19`
+- 当前发布基线：`trendpilot-app:ecs-20260928.20`
 - `postgres:16-alpine`
 
 候选数量、容器、cron、备份和资源状态已于 2026-09-28 重新核验；线上运行镜像为
-`trendpilot-app:ecs-20260926.19`，主页健康检查返回 HTTP 200。
+`trendpilot-app:ecs-20260928.20`，主页健康检查返回 HTTP 200。
 
 ## 3. 四阶段完成度
 

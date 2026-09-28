@@ -75,6 +75,7 @@ npm run build
 - [商品数据接入规范](docs/DATA_INGESTION.md)
 - [交接与验收清单](docs/HANDOVER_CHECKLIST.md)
 - [0.19.0 发布基线](docs/RELEASE_0.19.0.md)
+- [0.20.0 决策口径升级](docs/RELEASE_0.20.0.md)
 
 ## 安全原则
 
