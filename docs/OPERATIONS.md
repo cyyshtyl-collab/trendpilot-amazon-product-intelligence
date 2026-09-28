@@ -54,6 +54,7 @@ docker run -d \
   -p 80:3000 \
   --memory=850m \
   --memory-reservation=512m \
+  --memory-swap=1362m \
   trendpilot-app:<version>
 ```
 

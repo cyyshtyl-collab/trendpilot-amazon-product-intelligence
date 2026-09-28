@@ -29,10 +29,10 @@ WITH required(kind, name) AS (
   FROM information_schema.columns
   WHERE table_schema = 'public'
 )
-SELECT string_agg(required.kind || ':' || required.name, ',')
-FROM required
-LEFT JOIN present USING (kind, name)
-WHERE present.name IS NULL;
+SELECT string_agg(r.kind || ':' || r.name, ',')
+FROM required AS r
+LEFT JOIN present AS p ON p.kind = r.kind AND p.name = r.name
+WHERE p.name IS NULL;
 SQL
 )
 
