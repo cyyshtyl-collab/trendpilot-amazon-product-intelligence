@@ -158,6 +158,11 @@ type QualityQueueItem = {
   missing: string[];
   updatedAt: string;
 };
+type QualityDraft = {
+  bsr: string;
+  trend: string;
+  margin: string;
+};
 type DataVerification = {
   id: number;
   fields: string;
@@ -450,12 +455,16 @@ export default function Home() {
   const [dataQuality, setDataQuality] = useState<DataQuality | null>(null);
   const [qualityQueue, setQualityQueue] = useState<QualityQueueItem[]>([]);
   const [qualityDrafts, setQualityDrafts] = useState<
-    Record<number, { bsr: string; trend: string; margin: string }>
+    Record<number, QualityDraft>
   >({});
   const [qualitySaving, setQualitySaving] = useState(false);
   const [qualityMessage, setQualityMessage] = useState('');
   const [verificationMeta, setVerificationMeta] = useState({
-    source: 'Amazon 商品页 / Google Trends / 供应链报价',
+    sources: {
+      BSR: 'Amazon 商品详情页类目排名',
+      趋势: 'Google Trends 美国站 90 天趋势',
+      毛利: '供应商报价单 + 亚马逊费用核算',
+    },
     verifiedDate: new Date().toISOString().slice(0, 10),
     owner: 'admin',
   });
@@ -817,7 +826,7 @@ export default function Home() {
 
   /** Saves entered decision fields for the visible completion queue. */
   async function saveQualityQueue(): Promise<void> {
-    const updates = qualityQueue.slice(0, 8).flatMap((item) => {
+    const updates = qualityQueue.slice(0, 20).flatMap((item) => {
       const draft = qualityDrafts[item.id];
       if (!draft) return [];
       const update: { id: number; bsr?: number; trend?: number; margin?: number } = {
@@ -853,7 +862,7 @@ export default function Home() {
 
   /** Assigns the visible priority queue to one accountable owner. */
   async function assignQualityTasks(): Promise<void> {
-    const candidateIds = qualityQueue.slice(0, 8).map((item) => item.id);
+    const candidateIds = qualityQueue.slice(0, 20).map((item) => item.id);
     if (!candidateIds.length) return;
     setTaskSaving(true);
     setQualityMessage('正在分派本页补全任务…');
@@ -2739,20 +2748,25 @@ export default function Home() {
                   {qualityQueue.length ? (
                     <div className="quality-queue-editor">
                       <div className="task-assignment-bar">
-                        <div><strong>批量分派本页任务</strong><span>把当前 8 个优先商品交给同一负责人</span></div>
+                        <div><strong>批量分派本页任务</strong><span>一次覆盖当前 20 个优先商品</span></div>
                         <label>负责人<input value={taskAssignment.assignee} maxLength={60} onChange={(event) => setTaskAssignment((current) => ({ ...current, assignee: event.target.value }))} /></label>
                         <label>截止日期<input type="date" value={taskAssignment.dueDate} onChange={(event) => setTaskAssignment((current) => ({ ...current, dueDate: event.target.value }))} /></label>
                         <button type="button" disabled={taskSaving} onClick={() => void assignQualityTasks()}>{taskSaving ? '分派中…' : '分派本页'}</button>
                       </div>
                       <div className="verification-meta-grid">
-                        <label>数据来源<input value={verificationMeta.source} maxLength={120} onChange={(event) => setVerificationMeta((current) => ({ ...current, source: event.target.value }))} /></label>
+                        <label>BSR 证据<input value={verificationMeta.sources.BSR} maxLength={240} onChange={(event) => setVerificationMeta((current) => ({ ...current, sources: { ...current.sources, BSR: event.target.value } }))} /></label>
+                        <label>趋势证据<input value={verificationMeta.sources.趋势} maxLength={240} onChange={(event) => setVerificationMeta((current) => ({ ...current, sources: { ...current.sources, 趋势: event.target.value } }))} /></label>
+                        <label>毛利证据<input value={verificationMeta.sources.毛利} maxLength={240} onChange={(event) => setVerificationMeta((current) => ({ ...current, sources: { ...current.sources, 毛利: event.target.value } }))} /></label>
                         <label>核对日期<input type="date" value={verificationMeta.verifiedDate} onChange={(event) => setVerificationMeta((current) => ({ ...current, verifiedDate: event.target.value }))} /></label>
                         <label>负责人<input value={verificationMeta.owner} maxLength={60} onChange={(event) => setVerificationMeta((current) => ({ ...current, owner: event.target.value }))} /></label>
                       </div>
+                      <p className="verification-evidence-note">
+                        每个字段单独留痕：趋势必须来自对应关键词与周期，毛利必须来自供应商报价和费用核算；系统不会把估算值标记为真实证据。
+                      </p>
                       <div className="quality-queue-header">
                         <span>优先商品</span><span>BSR</span><span>趋势 %</span><span>毛利 %</span>
                       </div>
-                      {qualityQueue.slice(0, 8).map((item) => {
+                      {qualityQueue.slice(0, 20).map((item) => {
                         const draft = qualityDrafts[item.id] ?? { bsr: '', trend: '', margin: '' };
                         return (
                         <div className="quality-queue-row" key={item.id}>

@@ -1,6 +1,10 @@
 import { authorized } from '@/lib/auth';
 import { summarizeDataQuality } from '@/lib/data-quality';
 import { env } from '@/lib/runtime';
+import {
+  type DecisionEvidenceSources,
+  verificationEntries,
+} from '@/lib/verification';
 
 type QualityCandidate = Record<string, string | number | null>;
 type QualityUpdate = {
@@ -12,6 +16,7 @@ type QualityUpdate = {
 type VerificationPayload = {
   updates?: QualityUpdate[];
   source?: string;
+  sources?: DecisionEvidenceSources;
   verifiedDate?: string;
   owner?: string;
 };
@@ -104,10 +109,10 @@ export async function PATCH(request: Request): Promise<Response> {
   const updates = body.updates;
   if (!Array.isArray(updates) || updates.length < 1 || updates.length > 20)
     return Response.json({ error: '每次可保存 1–20 条补全记录' }, { status: 400 });
-  const source = body.source?.trim().slice(0, 120) ?? '';
+  const legacySource = body.source?.trim().slice(0, 240) ?? '';
+  const sources = body.sources ?? {};
   const owner = body.owner?.trim().slice(0, 60) ?? '';
   const verifiedDate = body.verifiedDate?.trim() ?? '';
-  if (!source) return Response.json({ error: '请填写数据来源' }, { status: 400 });
   if (!owner) return Response.json({ error: '请填写核对负责人' }, { status: 400 });
   if (!/^\d{4}-\d{2}-\d{2}$/.test(verifiedDate))
     return Response.json({ error: '请选择有效核对日期' }, { status: 400 });
@@ -132,16 +137,19 @@ export async function PATCH(request: Request): Promise<Response> {
       return Response.json({ error: '毛利率必须在 -1000%–100% 之间' }, { status: 400 });
     if (update.bsr === undefined && update.trend === undefined && update.margin === undefined)
       return Response.json({ error: '没有可保存的补全字段' }, { status: 400 });
+    const evidence = verificationEntries(update, sources, legacySource);
+    const missingEvidence = evidence.find((entry) => !entry.source);
+    if (missingEvidence)
+      return Response.json(
+        { error: `请填写${missingEvidence.field}的数据来源` },
+        { status: 400 },
+      );
   }
 
   const now = new Date().toISOString();
   const capturedDate = now.slice(0, 10);
   const statements = updates.flatMap((update) => {
-    const fields = [
-      update.bsr !== undefined ? 'BSR' : '',
-      update.trend !== undefined ? '趋势' : '',
-      update.margin !== undefined ? '毛利' : '',
-    ].filter(Boolean).join('、');
+    const evidence = verificationEntries(update, sources, legacySource);
     return [
     db()
       .prepare(
@@ -160,13 +168,15 @@ export async function PATCH(request: Request): Promise<Response> {
          bsr=excluded.bsr,trend=excluded.trend,margin=excluded.margin,captured_at=excluded.captured_at`,
       )
       .bind(capturedDate, now, update.id),
-    db()
-      .prepare(
-        `INSERT INTO data_verifications
-         (candidate_id,verified_fields,source,verified_date,owner,created_at)
-         VALUES (?,?,?,?,?,?)`,
-      )
-      .bind(update.id!, fields, source, verifiedDate, owner, now),
+    ...evidence.map((entry) =>
+      db()
+        .prepare(
+          `INSERT INTO data_verifications
+           (candidate_id,verified_fields,source,verified_date,owner,created_at)
+           VALUES (?,?,?,?,?,?)`,
+        )
+        .bind(update.id!, entry.field, entry.source, verifiedDate, owner, now),
+    ),
     ];
   });
   await db().batch(statements);

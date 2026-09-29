@@ -768,13 +768,19 @@ textarea:focus-visible {
 .quality-queue-editor { display: grid; gap: 8px; }
 .verification-meta-grid {
   display: grid;
-  grid-template-columns: minmax(240px, 2fr) minmax(150px, 1fr) minmax(140px, 1fr);
+  grid-template-columns: repeat(3, minmax(180px, 1.4fr)) repeat(2, minmax(130px, 0.8fr));
   gap: 10px;
   margin-bottom: 8px;
   padding: 14px;
   border: 1px solid rgba(0, 122, 255, 0.13);
   border-radius: 16px;
   background: rgba(238, 247, 255, 0.68);
+}
+.verification-evidence-note {
+  margin: -2px 2px 8px;
+  color: #6b7280;
+  font-size: 11px;
+  line-height: 1.55;
 }
 .task-assignment-bar {
   display: grid;
