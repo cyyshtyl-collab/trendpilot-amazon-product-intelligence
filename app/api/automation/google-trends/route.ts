@@ -1,9 +1,11 @@
 import { env } from '@/lib/runtime';
 import {
+  type GoogleTrendItem,
   fetchGoogleTrends,
   normalizeTrendGeo,
   persistGoogleTrends,
 } from '@/lib/google-trends';
+import { verifyTrendIngestSignature } from '@/lib/trend-ingest-signature';
 
 function db(): D1Database {
   return (env as unknown as { DB: D1Database }).DB;
@@ -63,4 +65,47 @@ export async function GET(request: Request): Promise<Response> {
       .run();
     return Response.json({ ok: false, error: '采集失败' }, { status: 502 });
   }
+}
+
+type SignedTrendPayload = {
+  geo?: string;
+  fetchedAt?: string;
+  items?: Array<Partial<GoogleTrendItem>>;
+};
+
+/** Accepts a short-lived, signed Google Trends collection from GitHub Actions. */
+export async function POST(request: Request): Promise<Response> {
+  const rawBody = await request.text();
+  const timestamp = request.headers.get('x-trendpilot-timestamp') ?? '';
+  const signature = request.headers.get('x-trendpilot-signature') ?? '';
+  if (!verifyTrendIngestSignature(rawBody, { timestamp, signature }))
+    return Response.json({ error: '签名无效或已过期' }, { status: 401 });
+
+  let body: SignedTrendPayload;
+  try {
+    body = JSON.parse(rawBody) as SignedTrendPayload;
+  } catch {
+    return Response.json({ error: '数据格式无效' }, { status: 400 });
+  }
+  const geo = normalizeTrendGeo(body.geo);
+  if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 100)
+    return Response.json({ error: '趋势条目必须为 1–100 条' }, { status: 400 });
+  const items: GoogleTrendItem[] = [];
+  for (const item of body.items) {
+    const keyword = String(item.keyword ?? '').trim().slice(0, 200);
+    const traffic = String(item.traffic ?? '').trim().slice(0, 40);
+    const publishedAt = String(item.publishedAt ?? '').trim().slice(0, 120);
+    if (!keyword || !traffic || !publishedAt)
+      return Response.json({ error: '趋势条目字段不完整' }, { status: 400 });
+    items.push({ keyword, traffic, publishedAt, source: 'Google Trends' });
+  }
+  const fetchedAt = Date.parse(String(body.fetchedAt ?? ''));
+  const startedAt = Number.isFinite(fetchedAt)
+    ? new Date(fetchedAt).toISOString()
+    : new Date().toISOString();
+  const finishedAt = await persistGoogleTrends(db(), geo, items, startedAt);
+  return Response.json(
+    { ok: true, geo, itemCount: items.length, finishedAt, transport: 'github' },
+    { headers: { 'Cache-Control': 'no-store' } },
+  );
 }

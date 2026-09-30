@@ -5,6 +5,12 @@ export type GoogleTrendItem = {
   source: 'Google Trends';
 };
 
+type StoredTrendRow = {
+  keyword: string;
+  traffic_text: string;
+  published_at: string;
+};
+
 export const GOOGLE_TRENDS_GEOS = new Set(['US', 'GB', 'DE', 'JP', 'CA', 'AU']);
 
 function decodeXml(value: string): string {
@@ -107,4 +113,34 @@ export async function persistGoogleTrends(
   ];
   await database.batch(statements);
   return finishedAt;
+}
+
+/** Reads the most recent persisted Google Trends collection for one market. */
+export async function readPersistedGoogleTrends(
+  database: D1Database,
+  geo: string,
+): Promise<{ items: GoogleTrendItem[]; capturedDate: string } | null> {
+  const safeGeo = normalizeTrendGeo(geo);
+  const latest = await database
+    .prepare(
+      "SELECT MAX(captured_date) AS captured_date FROM trend_signals WHERE source='Google Trends' AND market=?",
+    )
+    .bind(safeGeo)
+    .first<{ captured_date: string | null }>();
+  if (!latest?.captured_date) return null;
+  const result = await database
+    .prepare(
+      "SELECT keyword,traffic_text,published_at FROM trend_signals WHERE source='Google Trends' AND market=? AND captured_date=? ORDER BY traffic_value DESC,id DESC LIMIT 100",
+    )
+    .bind(safeGeo, latest.captured_date)
+    .all<StoredTrendRow>();
+  return {
+    capturedDate: latest.captured_date,
+    items: result.results.map((row) => ({
+      keyword: row.keyword,
+      traffic: row.traffic_text,
+      publishedAt: row.published_at,
+      source: 'Google Trends',
+    })),
+  };
 }

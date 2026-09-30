@@ -1,0 +1,25 @@
+name: Google Trends signed collection
+
+on:
+  schedule:
+    - cron: '5 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: google-trends-us
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch Google Trends and push signed payload
+        env:
+          TREND_PILOT_TRENDS_ENDPOINT: http://8.153.155.20/api/automation/google-trends
+          TREND_PILOT_TRENDS_SIGNING_KEY: ${{ secrets.TREND_PILOT_TRENDS_SIGNING_KEY }}
+        run: node .github/scripts/push-google-trends.mjs

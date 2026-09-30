@@ -4,6 +4,7 @@ import {
   fetchGoogleTrends,
   normalizeTrendGeo,
   persistGoogleTrends,
+  readPersistedGoogleTrends,
 } from '@/lib/google-trends';
 
 function db(): D1Database {
@@ -25,10 +26,13 @@ export async function GET(request: Request): Promise<Response> {
   try {
     items = await fetchGoogleTrends(geo);
   } catch {
-    return Response.json(
-      { error: 'Google Trends 暂时不可用，请稍后重试' },
-      { status: 502 },
-    );
+    const persisted = await readPersistedGoogleTrends(db(), geo);
+    if (!persisted)
+      return Response.json(
+        { error: 'Google Trends 暂时不可用，且暂无历史数据' },
+        { status: 502 },
+      );
+    items = persisted.items;
   }
   const rows = [
     ['关键词', '搜索热度', '发布时间', '站点', '数据来源'],
@@ -73,9 +77,18 @@ export async function POST(request: Request): Promise<Response> {
       )
       .bind('Google Trends', geo, 'failed', 0, message, startedAt, finishedAt)
       .run();
-    return Response.json(
-      { error: 'Google Trends 暂时不可用，请稍后重试' },
-      { status: 502 },
-    );
+    const persisted = await readPersistedGoogleTrends(db(), geo);
+    if (!persisted)
+      return Response.json(
+        { error: 'Google Trends 暂时不可用，且暂无历史数据' },
+        { status: 502 },
+      );
+    return Response.json({
+      items: persisted.items,
+      geo,
+      finishedAt: `${persisted.capturedDate}T00:00:00.000Z`,
+      cached: true,
+      warning: `Google 直连失败，当前展示 ${persisted.capturedDate} 的最近成功数据`,
+    });
   }
 }

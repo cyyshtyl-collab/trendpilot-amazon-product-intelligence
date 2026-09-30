@@ -1425,6 +1425,8 @@ export default function Home() {
       }
       const result = (await response.json()) as {
         error?: string;
+        cached?: boolean;
+        warning?: string;
         items?: Array<{
           keyword: string;
           traffic: string;
@@ -1433,7 +1435,9 @@ export default function Home() {
         }>;
       };
       setSourceMessage(
-        `已将 ${result.items?.length ?? 0} 条 Google Trends 信号直接写入市场信号池。`,
+        result.cached
+          ? `${result.warning ?? 'Google 直连失败'}，已载入 ${result.items?.length ?? 0} 条历史信号。`
+          : `已将 ${result.items?.length ?? 0} 条 Google Trends 信号直接写入市场信号池。`,
       );
       await loadSourceRuns();
       await loadTrendSignals();

@@ -17,6 +17,17 @@ root 终端，也不能进行端口、代理或 X11 转发：
 `deploy/fixed-deploy-gateway.sh`。固定私钥仅保存在授权运维电脑的 `~/.ssh` 中，
 不得提交到仓库或通过聊天传输。
 
+## Google Trends 海外采集
+
+阿里云中国区无法稳定访问 Google，因此 `.github/workflows/google-trends.yml` 每天
+北京时间 09:05 从 GitHub Actions 拉取公开 RSS，再把签名数据推送到生产接口。
+仓库必须配置 Actions Secret `TREND_PILOT_TRENDS_SIGNING_KEY`，内容为独立的
+Ed25519 私钥 PEM；私钥不得写入代码、日志或 ECS。服务端仅保存对应公钥，并拒绝
+超过五分钟、签名错误或被篡改的请求。
+
+若 GitHub 任务失败，页面会回退显示最近一次成功采集及其日期，不会把缓存数据
+标记为实时数据。ECS 原定时任务继续作为 Google 直连恢复探测。
+
 ## 1. 生产环境
 
 - 系统：Alibaba Cloud Linux 3
