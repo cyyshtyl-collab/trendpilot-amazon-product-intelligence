@@ -71,13 +71,23 @@ export async function POST(request: Request): Promise<Response> {
     const message =
       error instanceof Error ? error.message.slice(0, 500) : '未知错误';
     const finishedAt = new Date().toISOString();
+    const persisted = await readPersistedGoogleTrends(db(), geo);
     await db()
       .prepare(
         'INSERT INTO source_runs (source,market,status,item_count,error_message,started_at,finished_at) VALUES (?,?,?,?,?,?,?)',
       )
-      .bind('Google Trends', geo, 'failed', 0, message, startedAt, finishedAt)
+      .bind(
+        'Google Trends',
+        geo,
+        persisted ? 'warning' : 'failed',
+        persisted?.items.length ?? 0,
+        persisted
+          ? `Google 直连失败，使用 ${persisted.capturedDate} 的最近成功数据`
+          : message,
+        startedAt,
+        finishedAt,
+      )
       .run();
-    const persisted = await readPersistedGoogleTrends(db(), geo);
     if (!persisted)
       return Response.json(
         { error: 'Google Trends 暂时不可用，且暂无历史数据' },
